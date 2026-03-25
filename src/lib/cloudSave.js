@@ -3,16 +3,20 @@ import { exportLocalSave, importLocalSave } from '@/lib/gameStore';
 
 export async function getCurrentUser() {
   const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
+    data: { session },
+    error: sessionError,
+  } = await supabase.auth.getSession();
 
-  if (error) {
-    console.error('getCurrentUser error:', error);
+  if (sessionError) {
+    console.error('getCurrentUser getSession error:', sessionError);
     return null;
   }
 
-  return user ?? null;
+  if (!session?.user) {
+    return null;
+  }
+
+  return session.user;
 }
 
 export async function pullCloudSaveToLocal() {
@@ -35,16 +39,18 @@ export async function pullCloudSaveToLocal() {
   }
 
   importLocalSave({
-    coins: data.coins,
-    ownedSkins: data.owned_skins,
-    selectedSkin: data.selected_skin,
-    highScore: data.high_score,
-    totalKills: data.total_kills,
-    ownedWeapons: data.owned_weapons,
-    selectedWeapon: data.selected_weapon,
-    ownedUpgrades: data.owned_upgrades,
-    equippedUpgrades: data.equipped_upgrades,
+    coins: data.coins ?? 0,
+    ownedSkins: data.owned_skins ?? ['default'],
+    selectedSkin: data.selected_skin ?? 'default',
+    highScore: data.high_score ?? 0,
+    totalKills: data.total_kills ?? 0,
+    ownedWeapons: data.owned_weapons ?? ['basic'],
+    selectedWeapon: data.selected_weapon ?? 'basic',
+    ownedUpgrades: data.owned_upgrades ?? {},
+    equippedUpgrades: data.equipped_upgrades ?? {},
   });
+
+  window.dispatchEvent(new Event('storage'));
 
   return { ok: true, source: 'cloud' };
 }
@@ -57,15 +63,15 @@ export async function pushLocalSaveToCloud() {
 
   const payload = {
     user_id: user.id,
-    coins: local.coins,
-    owned_skins: local.ownedSkins,
-    selected_skin: local.selectedSkin,
-    high_score: local.highScore,
-    total_kills: local.totalKills,
-    owned_weapons: local.ownedWeapons,
-    selected_weapon: local.selectedWeapon,
-    owned_upgrades: local.ownedUpgrades,
-    equipped_upgrades: local.equippedUpgrades,
+    coins: local.coins ?? 0,
+    owned_skins: local.ownedSkins ?? ['default'],
+    selected_skin: local.selectedSkin ?? 'default',
+    high_score: local.highScore ?? 0,
+    total_kills: local.totalKills ?? 0,
+    owned_weapons: local.ownedWeapons ?? ['basic'],
+    selected_weapon: local.selectedWeapon ?? 'basic',
+    owned_upgrades: local.ownedUpgrades ?? {},
+    equipped_upgrades: local.equippedUpgrades ?? {},
     updated_at: new Date().toISOString(),
   };
 

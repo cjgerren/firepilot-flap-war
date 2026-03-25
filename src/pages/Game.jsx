@@ -1,8 +1,17 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import GameCanvas from '../components/game/GameCanvas';
 import MainMenu from '../components/game/MainMenu';
-import { getSelectedSkin, processGameOver } from '../lib/gameStore';
-import { ensureSaveLoaded, pushLocalSaveToCloud } from '../lib/cloudSave';
+import {
+  getSelectedSkin,
+  processGameOver,
+  getCoins,
+} from '../lib/gameStore';
+import {
+  ensureSaveLoaded,
+  pushLocalSaveToCloud,
+  pullCloudSaveToLocal,
+} from '../lib/cloudSave';
+import { useAuth } from '../lib/AuthContext';
 import audioManager from '../lib/audioManager';
 import useAudioUnlock from '../lib/useAudioUnlock';
 
@@ -14,6 +23,8 @@ export default function Game() {
   const [skinId, setSkinId] = useState(getSelectedSkin());
   const [blastReady, setBlastReady] = useState(false);
   const [tunnelBombReady, setTunnelBombReady] = useState(false);
+  const [localCoins, setLocalCoins] = useState(getCoins());
+
   const killsRef = useRef(0);
 
   const jumpRef = useRef(null);
@@ -21,7 +32,22 @@ export default function Game() {
   const blastRef = useRef(null);
   const tunnelBombRef = useRef(null);
 
+  const { user } = useAuth();
+
   useAudioUnlock();
+
+  useEffect(() => {
+    const refreshCoins = () => setLocalCoins(getCoins());
+
+    refreshCoins();
+
+    const handleStorage = () => refreshCoins();
+    window.addEventListener('storage', handleStorage);
+
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -33,6 +59,7 @@ export default function Game() {
 
         if (result?.ok) {
           setSkinId(getSelectedSkin());
+          setLocalCoins(getCoins());
         }
       } catch (error) {
         console.error('Initial save sync failed:', error);
@@ -45,6 +72,43 @@ export default function Game() {
       mounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const syncAfterCheckout = async () => {
+      const params = new URLSearchParams(window.location.search);
+      const checkout = params.get('checkout');
+
+      if (checkout === 'success' && user) {
+        try {
+          const result = await pullCloudSaveToLocal();
+          if (!mounted) return;
+
+          if (result?.ok) {
+            setSkinId(getSelectedSkin());
+            setLocalCoins(getCoins());
+          }
+        } catch (error) {
+          console.error('Post-checkout cloud sync failed:', error);
+        } finally {
+          const cleanUrl = `${window.location.origin}${window.location.pathname}`;
+          window.history.replaceState({}, '', cleanUrl);
+        }
+      }
+
+      if (checkout === 'cancelled') {
+        const cleanUrl = `${window.location.origin}${window.location.pathname}`;
+        window.history.replaceState({}, '', cleanUrl);
+      }
+    };
+
+    syncAfterCheckout();
+
+    return () => {
+      mounted = false;
+    };
+  }, [user]);
 
   useEffect(() => {
     if (gameState === 'playing') {
@@ -83,6 +147,7 @@ export default function Game() {
 
     const { coinsEarned: earned } = processGameOver(finalScore, k);
     setCoinsEarned(earned);
+    setLocalCoins(getCoins());
     setGameState('gameover');
 
     audioManager.playSfx('gameOver');
@@ -153,7 +218,7 @@ export default function Game() {
               color="#ffff00"
               border="hsla(60,100%,50%,0.5)"
               bg="hsla(60,100%,50%,0.12)"
-              icon="●━"
+              icon="◄►"
               label="FIRE"
             />
 
