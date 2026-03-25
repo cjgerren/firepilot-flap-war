@@ -1,0 +1,75 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&family=Orbitron:wght@400;500;600;700;800;900&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 230 25% 7%;
+    --foreground: 180 100% 90%;
+    --card: 230 25% 10%;
+    --card-foreground: 180 100% 90%;
+    --popover: 230 25% 10%;
+    --popover-foreground: 180 100% 90%;
+    --primary: 180 100% 50%;
+    --primary-foreground: 230 25% 7%;
+    --secondary: 300 100% 60%;
+    --secondary-foreground: 230 25% 7%;
+    --muted: 230 20% 15%;
+    --muted-foreground: 180 30% 55%;
+    --accent: 300 100% 60%;
+    --accent-foreground: 230 25% 7%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 180 40% 20%;
+    --input: 230 20% 18%;
+    --ring: 180 100% 50%;
+    --chart-1: 180 100% 50%;
+    --chart-2: 300 100% 60%;
+    --chart-3: 120 100% 50%;
+    --chart-4: 60 100% 50%;
+    --chart-5: 30 100% 50%;
+    --radius: 0.5rem;
+    --font-mono: 'JetBrains Mono', monospace;
+    --font-display: 'Orbitron', sans-serif;
+  }
+
+  .dark {
+    --background: 230 25% 7%;
+    --foreground: 180 100% 90%;
+    --card: 230 25% 10%;
+    --card-foreground: 180 100% 90%;
+    --popover: 230 25% 10%;
+    --popover-foreground: 180 100% 90%;
+    --primary: 180 100% 50%;
+    --primary-foreground: 230 25% 7%;
+    --secondary: 300 100% 60%;
+    --secondary-foreground: 230 25% 7%;
+    --muted: 230 20% 15%;
+    --muted-foreground: 180 30% 55%;
+    --accent: 300 100% 60%;
+    --accent-foreground: 230 25% 7%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 180 40% 20%;
+    --input: 230 20% 18%;
+    --ring: 180 100% 50%;
+    --chart-1: 180 100% 50%;
+    --chart-2: 300 100% 60%;
+    --chart-3: 120 100% 50%;
+    --chart-4: 60 100% 50%;
+    --chart-5: 30 100% 50%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-mono);
+  }
+}
