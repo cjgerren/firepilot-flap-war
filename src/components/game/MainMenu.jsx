@@ -42,7 +42,7 @@ export default function MainMenu({ gameState, score, kills, coinsEarned, onStart
             <motion.div initial={{ y: -20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.05 }} className="text-center mb-6">
               <h1 className="font-display text-5xl font-black tracking-wider"
                 style={{ color: '#00ffff', textShadow: '0 0 24px #00ffff88, 0 0 50px #00ffff33' }}>
-                NEON DRIFT
+                FIREPILOT: FLAP WAR v1.0
               </h1>
               <p className="font-mono text-xs tracking-widest mt-1" style={{ color: '#ff00ff', textShadow: '0 0 10px #ff00ff55' }}>
                 {'>> NAVIGATE THE DATA STREAM <<'}
