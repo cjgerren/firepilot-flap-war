@@ -1,11 +1,15 @@
-node_modules
-dist
+node_modules/
+dist/
+
 .env
+.env.*
 .env.local
 .env.*.local
 
-logs
+logs/
 *.log
+
+coverage/
 
 .DS_Store
 Thumbs.db
