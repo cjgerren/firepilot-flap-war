@@ -195,7 +195,7 @@ export default function Game() {
       </div>
 
       <p className="mt-2 font-mono text-xs" style={{ color: 'hsla(180,100%,50%,0.2)' }}>
-        NEON DRIFT v4.0
+        FIREPILOT: FLAP WAR v1.0
       </p>
 
       <style>{`
