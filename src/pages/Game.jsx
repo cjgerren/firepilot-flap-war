@@ -89,6 +89,7 @@ export default function Game() {
   const [score, setScore] = useState(0);
   const [kills, setKills] = useState(0);
   const [coinsEarned, setCoinsEarned] = useState(0);
+  const [diamondsEarned, setDiamondsEarned] = useState(0);
   const [skinId, setSkinId] = useState(getSelectedSkin());
   const [blastReady, setBlastReady] = useState(false);
   const [tunnelBombReady, setTunnelBombReady] = useState(false);
@@ -223,6 +224,7 @@ export default function Game() {
     setScore(0);
     setKills(0);
     setCoinsEarned(0);
+    setDiamondsEarned(0);
     setBlastReady(false);
     setTunnelBombReady(false);
     killsRef.current = 0;
@@ -242,7 +244,7 @@ export default function Game() {
     setGameState('idle');
   }, []);
 
-  const handleGameOver = useCallback(async (finalScore, finalKills) => {
+  const handleGameOver = useCallback(async (finalScore, finalKills, diamondsThisRun = 0) => {
     const k = finalKills ?? killsRef.current;
 
     setScore(finalScore);
@@ -252,6 +254,7 @@ export default function Game() {
 
     const { coinsEarned: earned } = processGameOver(finalScore, k);
     setCoinsEarned(earned);
+    setDiamondsEarned(diamondsThisRun);
     setLocalCoins(getCoins());
     setGameState('gameover');
 
@@ -303,6 +306,7 @@ export default function Game() {
           score={score}
           kills={kills}
           coinsEarned={coinsEarned}
+          diamondsEarned={diamondsEarned}
           onStart={handleStart}
           onReturnToMenu={handleReturnToMenu}
           onSkinChange={handleSkinChange}

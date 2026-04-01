@@ -15,8 +15,9 @@ import {
   Home,
 } from 'lucide-react';
 import Armory from './Armory.jsx';
-import { 
-  getCoins, 
+import {
+  getCoins,
+  getDiamonds,
   getHighScore,
   spendCoins,
   ownCombo,
@@ -25,7 +26,7 @@ import {
 } from '../../lib/gameStore';
 
 import { COMBO_PACKS } from '../../lib/gameItems';
-import { buyCoins, COIN_PACKS } from '../../lib/payments';
+import { buyCoins, buyDiamonds, COIN_PACKS, DIAMOND_PACKS } from '../../lib/payments';
 import { useAuth } from '../../lib/AuthContext';
 
 const DEFAULT_SETTINGS = {
@@ -168,17 +169,17 @@ function MenuActionButton({ icon, label, onClick, primary = false, accent = '#ff
       style={
         primary
           ? {
-              background:
-                'linear-gradient(135deg,hsla(180,100%,50%,0.18),hsla(300,100%,50%,0.12))',
-              border: '1px solid #00ffff',
-              color: '#00ffff',
-              boxShadow: '0 0 25px hsla(180,100%,50%,0.2)',
-            }
+            background:
+              'linear-gradient(135deg,hsla(180,100%,50%,0.18),hsla(300,100%,50%,0.12))',
+            border: '1px solid #00ffff',
+            color: '#00ffff',
+            boxShadow: '0 0 25px hsla(180,100%,50%,0.2)',
+          }
           : {
-              background: 'rgba(255,255,255,0.04)',
-              border: `1px solid ${accent}55`,
-              color: accent,
-            }
+            background: 'rgba(255,255,255,0.04)',
+            border: `1px solid ${accent}55`,
+            color: accent,
+          }
       }
     >
       {icon}
@@ -192,14 +193,17 @@ export default function MainMenu({
   score,
   kills,
   coinsEarned,
+  diamondsEarned = 0,
   onStart,
   onReturnToMenu,
   onSkinChange,
 }) {
   const [showShop, setShowShop] = useState(false);
   const [showCoinShop, setShowCoinShop] = useState(false);
+  const [showDiamondShop, setShowDiamondShop] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [coins, setCoins] = useState(getCoins());
+  const [diamonds, setDiamonds] = useState(getDiamonds());
   const [buyingPackId, setBuyingPackId] = useState(null);
   const [settingsDraft, setSettingsDraft] = useState(loadSettings());
   const [listeningFor, setListeningFor] = useState(null);
@@ -208,16 +212,19 @@ export default function MainMenu({
 
   const highScore = getHighScore();
 
-  const refreshCoins = () => setCoins(getCoins());
+  const refreshCurrencies = () => {
+    setCoins(getCoins());
+    setDiamonds(getDiamonds());
+  };
 
   useEffect(() => {
     const handleStorageChange = () => {
-      refreshCoins();
+      refreshCurrencies();
       setSettingsDraft(loadSettings());
     };
 
     const handleFocus = () => {
-      refreshCoins();
+      refreshCurrencies();
       setSettingsDraft(loadSettings());
     };
 
@@ -287,6 +294,38 @@ export default function MainMenu({
     }));
   }, []);
 
+  const diamondPacks = useMemo(() => {
+    const fallbackPacks = [
+      { id: 'diamonds_10', diamonds: 10, amount: 199, tag: null },
+      { id: 'diamonds_25', diamonds: 25, amount: 399, tag: 'Starter' },
+      { id: 'diamonds_75', diamonds: 75, amount: 999, tag: 'Popular' },
+      { id: 'diamonds_150', diamonds: 150, amount: 1799, tag: null },
+      { id: 'diamonds_300', diamonds: 300, amount: 2999, tag: 'Best Value' },
+    ];
+
+    const sourcePacks =
+      Array.isArray(DIAMOND_PACKS) && DIAMOND_PACKS.length > 0
+        ? DIAMOND_PACKS
+        : fallbackPacks;
+
+    return sourcePacks.map((pack) => ({
+      ...pack,
+      id: pack.id || `diamonds_${pack.diamonds}`,
+      displayPrice:
+        pack.priceLabel ||
+        (typeof pack.amount === 'number' ? `$${(pack.amount / 100).toFixed(2)}` : ''),
+      displayLabel: pack.label || `${pack.diamonds.toLocaleString()} Diamonds`,
+      tag:
+        pack.tag ??
+        {
+          25: 'Starter',
+          75: 'Popular',
+          300: 'Best Value',
+        }[pack.diamonds] ??
+        null,
+    }));
+  }, []);
+
   const handleCoinPurchase = async (pack) => {
     if (isLoadingAuth) {
       alert('Auth is still loading. Please wait a moment and try again.');
@@ -301,6 +340,25 @@ export default function MainMenu({
     try {
       setBuyingPackId(pack.id || String(pack.coins));
       await buyCoins(pack, user.id);
+    } finally {
+      setBuyingPackId(null);
+    }
+  };
+
+  const handleDiamondPurchase = async (pack) => {
+    if (isLoadingAuth) {
+      alert('Auth is still loading. Please wait a moment and try again.');
+      return;
+    }
+
+    if (!user?.id) {
+      alert('You must be logged in to buy diamonds.');
+      return;
+    }
+
+    try {
+      setBuyingPackId(pack.id || String(pack.diamonds));
+      await buyDiamonds(pack, user.id);
     } finally {
       setBuyingPackId(null);
     }
@@ -528,143 +586,346 @@ export default function MainMenu({
     </AnimatePresence>
   );
 
-const renderComboShopModal = () => (
-  <AnimatePresence>
-    {showComboShop && (
-      <>
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          onClick={() => setShowComboShop(false)}
-          className="fixed inset-0"
-          style={{
-            zIndex: 1000000,
-            background: 'rgba(0,0,0,0.72)',
-            backdropFilter: 'blur(6px)',
-          }}
-        />
-
-        <div
-          className="fixed inset-0 flex items-center justify-center p-4"
-          style={{ zIndex: 1000001 }}
-        >
+  const renderDiamondShopModal = () => (
+    <AnimatePresence>
+      {showDiamondShop && (
+        <>
           <motion.div
-            initial={{ opacity: 0, scale: 0.94 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.96 }}
-            className="w-full max-w-3xl rounded-2xl overflow-hidden flex flex-col"
-            style={{ ...panelBaseStyle, maxHeight: '90vh' }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setShowDiamondShop(false)}
+            className="fixed inset-0"
+            style={{
+              zIndex: 1000000,
+              background: 'rgba(0,0,0,0.72)',
+              backdropFilter: 'blur(6px)',
+            }}
+          />
+
+          <div
+            className="fixed inset-0 flex items-center justify-center p-4"
+            style={{ zIndex: 1000001 }}
           >
-            <div className="p-5 border-b border-white/10 flex justify-between">
-              <h2 className="font-display text-xl font-black text-cyan-300">
-                COMBO PACKS
-              </h2>
+            <motion.div
+              initial={{ opacity: 0, scale: 0.94, y: 18 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 12 }}
+              transition={{ type: 'spring', stiffness: 220, damping: 20 }}
+              className="w-full max-w-3xl rounded-2xl overflow-hidden flex flex-col"
+              style={{ ...panelBaseStyle, maxHeight: '90vh' }}
+            >
+              <div className="flex items-start justify-between gap-4 p-5 md:p-6 border-b border-white/10">
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span style={{ color: '#7de3ff', fontSize: 20 }}>💎</span>
+                    <h2
+                      className="font-display text-2xl font-black tracking-wider"
+                      style={{
+                        color: '#7de3ff',
+                        textShadow: '0 0 18px rgba(125, 227, 255, 0.28)',
+                      }}
+                    >
+                      BUY DIAMONDS
+                    </h2>
+                  </div>
+                  <p
+                    className="font-mono text-xs md:text-sm"
+                    style={{ color: 'rgba(255,255,255,0.65)' }}
+                  >
+                    Diamonds are used for specials and premium combo access.
+                  </p>
+                </div>
 
-            <div className="px-5 pt-3">
-              <button
-                onClick={() => setShowComboShop(false)}
-                className="px-3 py-2 rounded-xl font-mono text-xs font-bold"
-                style={{
-                  background: 'rgba(255,255,255,0.05)',
-                  border: '1px solid rgba(255,255,255,0.12)',
-                  color: '#ffffff',
-                }}
-              >
-                BACK TO MENU
-              </button>
-            </div>
+                <button
+                  onClick={() => setShowDiamondShop(false)}
+                  className="flex items-center justify-center rounded-lg transition-all hover:scale-105 active:scale-95 shrink-0"
+                  style={{
+                    width: 40,
+                    height: 40,
+                    border: '1px solid rgba(255,255,255,0.14)',
+                    background: 'rgba(255,255,255,0.05)',
+                    color: '#ffffff',
+                  }}
+                  aria-label="Close diamond shop"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
 
-              <button onClick={() => setShowComboShop(false)}>
-                <X />
-              </button>
-            </div>
-
-            <div className="overflow-y-auto p-5 grid gap-4">
-              {COMBO_PACKS.map((combo) => {
-                const active = isComboActive(combo.id);
-
-                return (
-                  <div
-                    key={combo.id}
-                    className="p-4 rounded-xl"
+              <div className="overflow-y-auto p-5 md:p-6">
+                <div
+                  className="flex items-center justify-between rounded-xl px-4 py-3 mb-5"
+                  style={{
+                    background: 'rgba(125, 227, 255, 0.08)',
+                    border: '1px solid rgba(125, 227, 255, 0.22)',
+                  }}
+                >
+                  <span
+                    className="font-mono text-xs md:text-sm"
+                    style={{ color: 'rgba(255,255,255,0.75)' }}
+                  >
+                    Current Balance
+                  </span>
+                  <span
+                    className="font-display text-lg font-black"
                     style={{
-                      border: '1px solid rgba(255,255,255,0.1)',
-                      background: 'rgba(255,255,255,0.03)',
+                      color: '#7de3ff',
+                      textShadow: '0 0 12px rgba(125, 227, 255, 0.24)',
                     }}
                   >
-                    <div className="flex justify-between items-center mb-2">
-                      <div className="font-bold text-white">
-                        {combo.name}
+                    {diamonds} DIAMONDS
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {diamondPacks.map((pack) => {
+                    const packId = pack.id || String(pack.diamonds);
+                    const isBuying = buyingPackId === packId;
+
+                    return (
+                      <motion.div
+                        key={packId}
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="relative rounded-2xl p-4"
+                        style={{
+                          background:
+                            'linear-gradient(135deg, rgba(125,227,255,0.10), rgba(0,255,255,0.05))',
+                          border: '1px solid rgba(255,255,255,0.1)',
+                          boxShadow: '0 0 18px rgba(255,255,255,0.04)',
+                        }}
+                      >
+                        {pack.tag && (
+                          <div
+                            className="absolute right-3 top-3 rounded-full px-2.5 py-1"
+                            style={{
+                              background:
+                                pack.tag === 'Best Value'
+                                  ? 'rgba(0,255,255,0.14)'
+                                  : 'rgba(255,0,255,0.12)',
+                              border:
+                                pack.tag === 'Best Value'
+                                  ? '1px solid rgba(0,255,255,0.28)'
+                                  : '1px solid rgba(255,0,255,0.24)',
+                            }}
+                          >
+                            <span
+                              className="font-mono text-[10px] font-bold tracking-wider"
+                              style={{
+                                color: pack.tag === 'Best Value' ? '#00ffff' : '#ff66ff',
+                              }}
+                            >
+                              {pack.tag.toUpperCase()}
+                            </span>
+                          </div>
+                        )}
+
+                        <div className="mb-4">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span style={{ color: '#7de3ff', fontSize: 18 }}>💎</span>
+                            <h3
+                              className="font-display text-2xl font-black"
+                              style={{ color: '#ffffff' }}
+                            >
+                              {pack.diamonds.toLocaleString()}
+                            </h3>
+                          </div>
+                          <p
+                            className="font-mono text-xs tracking-wider"
+                            style={{ color: 'rgba(255,255,255,0.58)' }}
+                          >
+                            {pack.displayLabel.toUpperCase()}
+                          </p>
+                        </div>
+
+                        <div
+                          className="rounded-xl px-3 py-2 mb-4"
+                          style={{
+                            background: 'rgba(255,255,255,0.04)',
+                            border: '1px solid rgba(255,255,255,0.08)',
+                          }}
+                        >
+                          <div
+                            className="font-mono text-[11px]"
+                            style={{ color: 'rgba(255,255,255,0.58)' }}
+                          >
+                            PRICE
+                          </div>
+                          <div
+                            className="font-display text-xl font-black"
+                            style={{
+                              color: '#7de3ff',
+                              textShadow: '0 0 10px rgba(125,227,255,0.2)',
+                            }}
+                          >
+                            {pack.displayPrice || 'Unavailable'}
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={() => handleDiamondPurchase(pack)}
+                          disabled={isLoadingAuth || isBuying}
+                          className="w-full px-4 py-2.5 rounded-xl font-display text-sm font-bold tracking-wider transition-all hover:scale-[1.02] active:scale-[0.98] disabled:cursor-not-allowed"
+                          style={{
+                            background:
+                              'linear-gradient(135deg, rgba(125,227,255,0.18), rgba(0,255,255,0.12))',
+                            border: '1px solid rgba(125,227,255,0.45)',
+                            color: '#7de3ff',
+                            opacity: isLoadingAuth || isBuying ? 0.65 : 1,
+                          }}
+                        >
+                          {isBuying ? 'OPENING CHECKOUT...' : 'BUY NOW'}
+                        </button>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        </>
+      )}
+    </AnimatePresence>
+  );
+
+  const renderComboShopModal = () => (
+    <AnimatePresence>
+      {showComboShop && (
+        <>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setShowComboShop(false)}
+            className="fixed inset-0"
+            style={{
+              zIndex: 1000000,
+              background: 'rgba(0,0,0,0.72)',
+              backdropFilter: 'blur(6px)',
+            }}
+          />
+
+          <div
+            className="fixed inset-0 flex items-center justify-center p-4"
+            style={{ zIndex: 1000001 }}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.94 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.96 }}
+              className="w-full max-w-3xl rounded-2xl overflow-hidden flex flex-col"
+              style={{ ...panelBaseStyle, maxHeight: '90vh' }}
+            >
+              <div className="p-5 border-b border-white/10 flex justify-between">
+                <h2 className="font-display text-xl font-black text-cyan-300">
+                  COMBO PACKS
+                </h2>
+
+                <div className="px-5 pt-3">
+                  <button
+                    onClick={() => setShowComboShop(false)}
+                    className="px-3 py-2 rounded-xl font-mono text-xs font-bold"
+                    style={{
+                      background: 'rgba(255,255,255,0.05)',
+                      border: '1px solid rgba(255,255,255,0.12)',
+                      color: '#ffffff',
+                    }}
+                  >
+                    BACK TO MENU
+                  </button>
+                </div>
+
+                <button onClick={() => setShowComboShop(false)}>
+                  <X />
+                </button>
+              </div>
+
+              <div className="overflow-y-auto p-5 grid gap-4">
+                {COMBO_PACKS.map((combo) => {
+                  const active = isComboActive(combo.id);
+
+                  return (
+                    <div
+                      key={combo.id}
+                      className="p-4 rounded-xl"
+                      style={{
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        background: 'rgba(255,255,255,0.03)',
+                      }}
+                    >
+                      <div className="flex justify-between items-center mb-2">
+                        <div className="font-bold text-white">
+                          {combo.name}
+                        </div>
+                        <div className="text-yellow-400 font-mono">
+                          {combo.cost} coins
+                        </div>
                       </div>
-                      <div className="text-yellow-400 font-mono">
-                        {combo.cost} coins
+
+                      <div className="text-xs text-white/60 mb-3">
+                        {combo.desc}
+                      </div>
+
+                      {active && (
+                        <div className="text-green-400 text-xs mb-2">
+                          ACTIVE
+                        </div>
+                      )}
+
+                      <div className="flex gap-2 flex-wrap">
+                        <button
+                          onClick={() => {
+                            if (!spendCoins(combo.cost)) {
+                              alert('Not enough coins');
+                              return;
+                            }
+                            ownCombo(combo.id);
+                            setCoins(getCoins());
+                          }}
+                          className="px-3 py-2 rounded bg-cyan-500/20 border border-cyan-400 text-cyan-300"
+                        >
+                          BUY
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            if (!spendCoins(Math.floor(combo.cost * 0.4))) {
+                              alert('Not enough coins');
+                              return;
+                            }
+                            rentCombo(combo.id, 7 * 24 * 60 * 60 * 1000);
+                            setCoins(getCoins());
+                          }}
+                          className="px-3 py-2 rounded bg-purple-500/20 border border-purple-400 text-purple-300"
+                        >
+                          RENT WEEK
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            if (!spendCoins(Math.floor(combo.cost * 0.7))) {
+                              alert('Not enough coins');
+                              return;
+                            }
+                            rentCombo(combo.id, 30 * 24 * 60 * 60 * 1000);
+                            setCoins(getCoins());
+                          }}
+                          className="px-3 py-2 rounded bg-pink-500/20 border border-pink-400 text-pink-300"
+                        >
+                          RENT MONTH
+                        </button>
                       </div>
                     </div>
-
-                    <div className="text-xs text-white/60 mb-3">
-                      {combo.desc}
-                    </div>
-
-                    {active && (
-                      <div className="text-green-400 text-xs mb-2">
-                        ACTIVE
-                      </div>
-                    )}
-
-                    <div className="flex gap-2 flex-wrap">
-                      <button
-                        onClick={() => {
-                          if (!spendCoins(combo.cost)) {
-                            alert('Not enough coins');
-                            return;
-                          }
-                          ownCombo(combo.id);
-                          setCoins(getCoins());
-                        }}
-                        className="px-3 py-2 rounded bg-cyan-500/20 border border-cyan-400 text-cyan-300"
-                      >
-                        BUY
-                      </button>
-
-                      <button
-                        onClick={() => {
-                          if (!spendCoins(Math.floor(combo.cost * 0.4))) {
-                            alert('Not enough coins');
-                            return;
-                          }
-                          rentCombo(combo.id, 7 * 24 * 60 * 60 * 1000);
-                          setCoins(getCoins());
-                        }}
-                        className="px-3 py-2 rounded bg-purple-500/20 border border-purple-400 text-purple-300"
-                      >
-                        RENT WEEK
-                      </button>
-
-                      <button
-                        onClick={() => {
-                          if (!spendCoins(Math.floor(combo.cost * 0.7))) {
-                            alert('Not enough coins');
-                            return;
-                          }
-                          rentCombo(combo.id, 30 * 24 * 60 * 60 * 1000);
-                          setCoins(getCoins());
-                        }}
-                        className="px-3 py-2 rounded bg-pink-500/20 border border-pink-400 text-pink-300"
-                      >
-                        RENT MONTH
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </motion.div>
-        </div>
-      </>
-    )}
-  </AnimatePresence>
-);
+                  );
+                })}
+              </div>
+            </motion.div>
+          </div>
+        </>
+      )}
+    </AnimatePresence>
+  );
 
   const renderSettingsModal = () => (
     <AnimatePresence>
@@ -1046,6 +1307,14 @@ const renderComboShopModal = () => (
             bg="hsla(50,100%,50%,0.06)"
           />
           <StatChip
+            icon={<span className="text-sm">💎</span>}
+            label="DIAMONDS"
+            value={diamonds}
+            color="#7de3ff"
+            border="1px solid rgba(125,227,255,0.2)"
+            bg="rgba(125,227,255,0.06)"
+          />
+          <StatChip
             icon={<Zap className="w-4 h-4" />}
             label="CONTROL"
             value={prettyKeyName(settingsDraft.shootKey)}
@@ -1055,7 +1324,7 @@ const renderComboShopModal = () => (
           />
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
           <MenuActionButton
             onClick={onStart}
             icon={<Play className="w-5 h-5" />}
@@ -1073,6 +1342,12 @@ const renderComboShopModal = () => (
             icon={<Coins className="w-4 h-4" />}
             label="BUY COINS"
             accent="#ffdd00"
+          />
+          <MenuActionButton
+            onClick={() => setShowDiamondShop(true)}
+            icon={<span className="text-sm">💎</span>}
+            label="BUY DIAMONDS"
+            accent="#7de3ff"
           />
           <MenuActionButton
             onClick={() => setShowComboShop(true)}
@@ -1180,6 +1455,7 @@ const renderComboShopModal = () => (
         </AnimatePresence>
 
         {renderCoinShopModal()}
+        {renderDiamondShopModal()}
         {renderSettingsModal()}
         {renderComboShopModal()}
 
@@ -1274,6 +1550,33 @@ const renderComboShopModal = () => (
                   style={{ color: 'hsla(50,100%,50%,0.5)' }}
                 >
                   ({coins} total)
+                </span>
+              </motion.div>
+            )}
+
+            {diamondsEarned > 0 && (
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ delay: 0.4, type: 'spring' }}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg mb-4"
+                style={{
+                  background: 'rgba(125,227,255,0.10)',
+                  border: '1px solid rgba(125,227,255,0.30)',
+                }}
+              >
+                <span style={{ color: '#7de3ff' }}>💎</span>
+                <span
+                  className="font-mono text-sm font-bold"
+                  style={{ color: '#7de3ff' }}
+                >
+                  +{diamondsEarned} diamonds earned!
+                </span>
+                <span
+                  className="font-mono text-xs"
+                  style={{ color: 'rgba(125,227,255,0.55)' }}
+                >
+                  ({diamonds} total)
                 </span>
               </motion.div>
             )}

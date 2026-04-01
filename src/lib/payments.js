@@ -59,18 +59,63 @@ export const COIN_PACKS = [
   },
 ];
 
+export const DIAMOND_PACKS = [
+  {
+    id: 'diamonds_10',
+    label: '10 Diamonds',
+    diamonds: 10,
+    amount: 199,
+  },
+  {
+    id: 'diamonds_25',
+    label: '25 Diamonds',
+    diamonds: 25,
+    amount: 399,
+    tag: 'Starter',
+  },
+  {
+    id: 'diamonds_75',
+    label: '75 Diamonds',
+    diamonds: 75,
+    amount: 999,
+    tag: 'Popular',
+  },
+  {
+    id: 'diamonds_150',
+    label: '150 Diamonds',
+    diamonds: 150,
+    amount: 1799,
+  },
+  {
+    id: 'diamonds_300',
+    label: '300 Diamonds',
+    diamonds: 300,
+    amount: 2999,
+    tag: 'Best Value',
+  },
+];
+
 export function formatUsdFromCents(amount) {
   return `$${(amount / 100).toFixed(2)}`;
 }
 
-export async function buyCoins(pack, userId) {
+async function createCheckout(pack, userId, currencyType) {
   try {
     if (!pack || typeof pack !== 'object') {
-      throw new Error('Invalid coin pack');
+      throw new Error(`Invalid ${currencyType} pack`);
     }
 
     if (!userId) {
       throw new Error('Missing user id');
+    }
+
+    const quantity =
+      currencyType === 'diamonds'
+        ? pack.diamonds
+        : pack.coins;
+
+    if (!quantity || !Number.isInteger(quantity) || quantity <= 0) {
+      throw new Error(`Invalid ${currencyType} quantity`);
     }
 
     const res = await fetch(
@@ -82,7 +127,8 @@ export async function buyCoins(pack, userId) {
         },
         body: JSON.stringify({
           amount: pack.amount,
-          coins: pack.coins,
+          currencyType,
+          quantity,
           userId,
         }),
       }
@@ -104,4 +150,12 @@ export async function buyCoins(pack, userId) {
     console.error('Payment error:', err);
     alert(err.message || 'Unable to start checkout right now.');
   }
+}
+
+export async function buyCoins(pack, userId) {
+  return createCheckout(pack, userId, 'coins');
+}
+
+export async function buyDiamonds(pack, userId) {
+  return createCheckout(pack, userId, 'diamonds');
 }

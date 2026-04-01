@@ -7,6 +7,7 @@ import {
   consumeEquippedUpgrade,
   getOwnedCombos,
   isComboActive,
+  addDiamonds,
 } from '../../lib/gameStore.js';
 
 
@@ -363,9 +364,9 @@ function drawEnemy(ctx, e, frame) {
     ctx.closePath();
     ctx.fill();
 
-    ctx.shadowColor = '#ff00ff';
+    ctx.shadowColor = '#ae5f04';
     ctx.shadowBlur = 8;
-    ctx.fillStyle = '#ff00ff';
+    ctx.fillStyle = '#af5d11';
     ctx.beginPath();
     ctx.arc(6, 0, 3, 0, Math.PI * 2);
     ctx.fill();
@@ -383,6 +384,47 @@ function drawEnemy(ctx, e, frame) {
       ctx.fillRect(i, -10, 4, 3);
       ctx.fillRect(i + 4, 7, 4, 3);
     }
+  } else if (e.type === 'ground_turret') {
+    ctx.shadowColor = '#1e5322';
+    ctx.shadowBlur = 12 * pulse;
+
+    // Base
+    ctx.fillStyle = '#17404d';
+    ctx.fillRect(-16, -8, 32, 16);
+
+    ctx.strokeStyle = '#2a4b2f';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(-16, -8, 32, 16);
+
+    // Treads / ground base
+    ctx.fillStyle = '#0f1a22';
+    ctx.fillRect(-18, 8, 36, 6);
+
+    // Turret head
+    ctx.fillStyle = '#245d70';
+    ctx.fillRect(-10, -18, 20, 12);
+
+    ctx.strokeStyle = '#453d28';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(-10, -18, 20, 12);
+
+    // Cannon aimed forward/up slightly
+    ctx.fillStyle = '#322a1a';
+    ctx.fillRect(4, -15, 16, 4);
+
+    // Core light
+    ctx.shadowColor = '#4a4228';
+    ctx.shadowBlur = 12;
+    ctx.fillStyle = '#413312';
+    ctx.beginPath();
+    ctx.arc(0, -12, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Small glow accents
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = `rgba(125,227,255,${0.35 + pulse * 0.25})`;
+    ctx.fillRect(-12, -4, 4, 4);
+    ctx.fillRect(8, -4, 4, 4);
   }
 
   if (e.hp < e.maxHp) {
@@ -390,7 +432,7 @@ function drawEnemy(ctx, e, frame) {
     const bh = 4;
     ctx.fillStyle = '#330000';
     ctx.fillRect(-bw / 2, -24, bw, bh);
-    ctx.fillStyle = '#ff4400';
+    ctx.fillStyle = e.type === 'ground_turret' ? '#090909' : '#080808';
     ctx.fillRect(-bw / 2, -24, bw * (e.hp / e.maxHp), bh);
   }
 
@@ -722,6 +764,7 @@ export default function GameCanvas({
       rockets: [],
       zapArcs: [],
       enemies: [],
+      enemyBullets: [],
       particles: [],
       blasts: [],
       tunnelBombs: [],
@@ -784,8 +827,24 @@ export default function GameCanvas({
     explode(game, e.x, e.y, '#ff4400', '#ffff00', 16);
     e.dead = true;
     game.kills++;
-    game.score += (e.type === 'bomber' ? 3 : e.type === 'seeker' ? 2 : 1) + scoreBonus;
+
+    const baseScore =
+      e.type === 'ground_turret'
+        ? 4
+        : e.type === 'bomber'
+          ? 3
+          : e.type === 'seeker'
+            ? 2
+            : 1;
+
+    game.score += baseScore + scoreBonus;
     game.killStreak++;
+
+    if (e.type === 'ground_turret') {
+      const diamondReward = e.diamondReward ?? 1;
+      addDiamonds(diamondReward);
+      game.diamondsEarned = (game.diamondsEarned || 0) + diamondReward;
+    }
 
     playSfx('explosion');
 
@@ -880,7 +939,7 @@ export default function GameCanvas({
     game.ended = true;
 
     playSfx('hit');
-    onGameOver(game.score, game.kills);
+    onGameOver(game.score, game.kills, game.diamondsEarned || 0);
 
     return true;
   }
@@ -988,6 +1047,7 @@ export default function GameCanvas({
     }
 
     game.enemies = [];
+    game.enemyBullets = [];
     onScore(game.score, game.kills);
   }, [gameState, onBlastReadyChange, onScore]);
 
@@ -1288,7 +1348,9 @@ export default function GameCanvas({
     const roll = Math.random();
     let type = 'drone';
 
-    if (game.score < 5) {
+    if (game.score >= 12 && roll < 0.18) {
+      type = 'ground_turret';
+    } else if (game.score < 5) {
       type = roll < 0.8 ? 'drone' : 'seeker';
     } else if (roll < tier.bomberBias) {
       type = 'bomber';
@@ -1302,667 +1364,749 @@ export default function GameCanvas({
       drone: { hp: 1, maxHp: 1, speed: 2.5 + Math.random() * 1.5, size: 14 },
       seeker: { hp: 2, maxHp: 2, speed: 2 + Math.random() * 2, size: 16 },
       bomber: { hp: 4, maxHp: 4, speed: 1.2 + Math.random() * 0.8, size: 18 },
+      ground_turret: {
+        hp: 5 + Math.floor(Math.random() * 4),
+        maxHp: 8,
+        speed: 1.25 + Math.random() * 0.45,
+        size: 18,
+      },
     };
 
     const cfg = configs[type];
 
-    // Look at the nearest upcoming pipe so enemy spawns in playable space.
-    const nextPipe = game.pipes
-      .filter((p) => p.x + PIPE_WIDTH > game.player.x)
-      .sort((a, b) => a.x - b.x)[0];
-
     let spawnY;
 
-    if (nextPipe) {
-      const gapTop = nextPipe.topHeight;
-      const gapBottom = nextPipe.topHeight + nextPipe.gap;
-      const padding = 22;
-
-      const safeMin = gapTop + padding;
-      const safeMax = gapBottom - padding;
-
-      if (safeMax > safeMin) {
-        spawnY = safeMin + Math.random() * (safeMax - safeMin);
-      } else {
-        spawnY = GAME_HEIGHT / 2;
-      }
+    if (type === 'ground_turret') {
+      spawnY = groundY - cfg.size - 8;
     } else {
-      spawnY = 80 + Math.random() * (groundY - 160);
-    }
+      const nextPipe = game.pipes
+        .filter((p) => p.x + PIPE_WIDTH > game.player.x)
+        .sort((a, b) => a.x - b.x)[0];
 
-    // Avoid spawning too close to the player vertically.
-    if (Math.abs(spawnY - game.player.y) < 36) {
-      spawnY += spawnY < game.player.y ? -48 : 48;
-    }
+      if (nextPipe) {
+        const gapTop = nextPipe.topHeight;
+        const gapBottom = nextPipe.topHeight + nextPipe.gap;
+        const padding = 22;
 
-    spawnY = Math.max(40, Math.min(groundY - 20, spawnY));
+        const safeMin = gapTop + padding;
+        const safeMax = gapBottom - padding;
+
+        if (safeMax > safeMin) {
+          spawnY = safeMin + Math.random() * (safeMax - safeMin);
+        } else {
+          spawnY = GAME_HEIGHT / 2;
+        }
+      } else {
+        spawnY = 80 + Math.random() * (groundY - 160);
+      }
+
+      if (Math.abs(spawnY - game.player.y) < 36) {
+        spawnY += spawnY < game.player.y ? -48 : 48;
+      }
+
+      spawnY = Math.max(40, Math.min(groundY - 20, spawnY));
+    }
 
     game.enemies.push({
       x: GAME_WIDTH + 40,
       y: spawnY,
-      vy: (Math.random() - 0.5) * 1.2,
+      vy: type === 'ground_turret' ? 0 : (Math.random() - 0.5) * 1.2,
       type,
       hp: cfg.hp,
-      maxHp: cfg.maxHp,
+      maxHp: type === 'ground_turret' ? cfg.hp : cfg.maxHp,
       speed: cfg.speed,
       size: cfg.size,
       seed: Math.random() * 100,
       seekTimer: 0,
+      shootCooldown:
+        type === 'ground_turret'
+          ? 70 + Math.floor(Math.random() * 45)
+          : 0,
+      diamondReward: type === 'ground_turret' ? 1 : 0,
       id: Math.random(),
     });
   }
 
   useEffect(() => {
-  const canvas = canvasRef.current;
-  const ctx = canvas.getContext('2d');
-  let animId;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    let animId;
 
-  const loop = () => {
-    const game = gameRef.current;
-    if (!game) return;
+    const loop = () => {
+      const game = gameRef.current;
+      if (!game) return;
 
-    const groundY = GAME_HEIGHT - GROUND_HEIGHT;
-    const playerHalf = PLAYER_SIZE / 2;
-    const tier = getDifficultyTier(game.score);
+      const groundY = GAME_HEIGHT - GROUND_HEIGHT;
+      const playerHalf = PLAYER_SIZE / 2;
+      const tier = getDifficultyTier(game.score);
 
-    if (gameState === 'playing') {
-      game.frame++;
-      game.speed = tier.speed;
+      if (gameState === 'playing') {
+        game.frame++;
+        game.speed = tier.speed;
 
-      if (game.started) {
-        if (game.postTeleportFreeze > 0) {
-          game.postTeleportFreeze--;
-        } else {
-          game.scrollX += game.speed;
+        if (game.started) {
+          if (game.postTeleportFreeze > 0) {
+            game.postTeleportFreeze--;
+          } else {
+            game.scrollX += game.speed;
+          }
         }
-      }
 
-      if (game.invincible > 0) game.invincible--;
-      if (game.zapCooldown > 0) game.zapCooldown--;
+        if (game.invincible > 0) game.invincible--;
+        if (game.zapCooldown > 0) game.zapCooldown--;
 
-      if (game.teleportWindup) {
-        game.teleportWindup.framesLeft--;
+        if (game.teleportWindup) {
+          game.teleportWindup.framesLeft--;
 
-        if (game.teleportWindup.framesLeft <= 0) {
-          const { exitY, worldShift, desiredPlayerX } = game.teleportWindup;
+          if (game.teleportWindup.framesLeft <= 0) {
+            const { exitY, worldShift, desiredPlayerX } = game.teleportWindup;
 
-          game.portalEffects.push({
-            x: desiredPlayerX,
-            y: exitY,
-            life: 24,
-            maxLife: 24,
-            type: 'exit',
-          });
-
-          game.pipes.forEach((p) => {
-            p.x -= worldShift;
-          });
-          game.enemies.forEach((e) => {
-            e.x -= worldShift;
-          });
-          game.bullets.forEach((b) => {
-            b.x -= worldShift;
-          });
-          game.rockets.forEach((r) => {
-            r.x -= worldShift;
-          });
-          game.tunnelBombs.forEach((b) => {
-            b.x -= worldShift;
-          });
-          game.blasts.forEach((b) => {
-            b.originX -= worldShift;
-          });
-          game.zapArcs.forEach((z) => {
-            z.x1 -= worldShift;
-            z.x2 -= worldShift;
-          });
-          game.particles.forEach((p) => {
-            p.x -= worldShift;
-          });
-
-          game.player.x = desiredPlayerX;
-          game.player.y = exitY;
-          game.player.velocity = 0;
-          game.invincible = Math.max(game.invincible, 35);
-          game.postTeleportFreeze = 28;
-          game.comboSpecialUses -= 1;
-          game.teleportWindup = null;
-
-          for (let i = 0; i < 18; i++) {
-            game.particles.push({
-              x: desiredPlayerX + (Math.random() - 0.5) * 18,
-              y: exitY + (Math.random() - 0.5) * 18,
-              vx: (Math.random() - 0.5) * 7,
-              vy: (Math.random() - 0.5) * 7,
-              life: 18 + Math.floor(Math.random() * 12),
-              color: Math.random() > 0.5 ? '#66ffff' : '#cc99ff',
-              type: 'trail',
-              size: 2 + Math.random() * 2,
+            game.portalEffects.push({
+              x: desiredPlayerX,
+              y: exitY,
+              life: 24,
+              maxLife: 24,
+              type: 'exit',
             });
+
+            game.pipes.forEach((p) => {
+              p.x -= worldShift;
+            });
+            game.enemies.forEach((e) => {
+              e.x -= worldShift;
+            });
+            game.bullets.forEach((b) => {
+              b.x -= worldShift;
+            });
+            game.rockets.forEach((r) => {
+              r.x -= worldShift;
+            });
+            game.tunnelBombs.forEach((b) => {
+              b.x -= worldShift;
+            });
+            game.blasts.forEach((b) => {
+              b.originX -= worldShift;
+            });
+            game.zapArcs.forEach((z) => {
+              z.x1 -= worldShift;
+              z.x2 -= worldShift;
+            });
+            game.particles.forEach((p) => {
+              p.x -= worldShift;
+            });
+
+            game.player.x = desiredPlayerX;
+            game.player.y = exitY;
+            game.player.velocity = 0;
+            game.invincible = Math.max(game.invincible, 35);
+            game.postTeleportFreeze = 28;
+            game.comboSpecialUses -= 1;
+            game.teleportWindup = null;
+
+            for (let i = 0; i < 18; i++) {
+              game.particles.push({
+                x: desiredPlayerX + (Math.random() - 0.5) * 18,
+                y: exitY + (Math.random() - 0.5) * 18,
+                vx: (Math.random() - 0.5) * 7,
+                vy: (Math.random() - 0.5) * 7,
+                life: 18 + Math.floor(Math.random() * 12),
+                color: Math.random() > 0.5 ? '#66ffff' : '#cc99ff',
+                type: 'trail',
+                size: 2 + Math.random() * 2,
+              });
+            }
           }
         }
       }
-    }
 
-    if (game.weaponId === 'lightning' && game.zapCharge < game.weaponDef.maxCharge) {
-      game.zapCharge = Math.min(
-        game.weaponDef.maxCharge,
-        game.zapCharge + game.weaponDef.rechargeRate
-      );
-    }
-
-    if (game.burstPending.length > 0) {
-      const ready = [];
-      const waiting = [];
-
-      for (const item of game.burstPending) {
-        if (game.frame >= item.fireAtFrame) {
-          ready.push(item);
-        } else {
-          waiting.push(item);
-        }
-      }
-
-      game.burstPending = waiting;
-
-      for (const item of ready) {
-        game.bullets.push({
-          ...item.bullet,
-          spawnFrame: game.frame,
-        });
-      }
-    }
-
-    if (game.autoHeld) {
-      shoot();
-    }
-
-    if (game.started) {
-      game.player.velocity += GRAVITY;
-      game.player.y += game.player.velocity;
-    }
-
-    if (game.shieldLevel === 2 && game.shieldDurationLeft > 0) {
-      game.shieldDurationLeft--;
-      if (game.shieldDurationLeft === 0) {
-        game.shieldKillsEnemies = false;
-        game.shieldLevel = 0;
-        game.shieldHitsLeft = 0;
-        game.shields = 0;
-      }
-    }
-
-    if (game.tunnelBombActive) {
-      game.tunnelBombTimer--;
-      if (game.tunnelBombTimer <= 0) {
-        game.tunnelBombActive = false;
-        game.pipeGap = PIPE_GAP;
-      }
-    }
-
-    game.portalEffects = game.portalEffects
-      .map((p) => ({
-        ...p,
-        life: p.life - 1,
-      }))
-      .filter((p) => p.life > 0);
-
-    if (game.started) {
-      game.pipeTimer++;
-
-      const spawnInterval = Math.max(
-        tier.pipeSpawnMin,
-        140 - game.score * tier.pipeSpawnDecay
-      );
-
-      if (game.pipeTimer >= spawnInterval) {
-        game.pipeTimer = 0;
-
-        const gap = game.pipeGap;
-        const minTop = 60;
-        const maxTop = groundY - gap - 60;
-        const topHeight = minTop + Math.random() * Math.max(10, maxTop - minTop);
-
-        let dynamicChance = 0;
-        if (game.score >= 20 && game.score < 40) {
-          dynamicChance = 0.3;
-        } else if (game.score >= 40) {
-          dynamicChance = 0.5;
-        }
-
-        const isDynamic = Math.random() < dynamicChance;
-
-        game.pipes.push({
-          x: GAME_WIDTH + 10,
-          topHeight,
-          baseTopHeight: topHeight,
-          gap,
-          scored: false,
-          dynamic: isDynamic,
-          waveAmp: isDynamic ? (game.score >= 40 ? 22 : 18) : 0,
-          waveSpeed: isDynamic ? (game.score >= 40 ? 0.05 : 0.04) : 0,
-          waveOffset: Math.random() * Math.PI * 2,
-        });
-
-        game.enemyTimer = Math.min(game.enemyTimer, 35);
-      }
-    }
-
-    game.pipes.forEach((p) => {
-      if (game.postTeleportFreeze <= 0) {
-        p.x -= game.speed;
-      }
-
-      if (p.dynamic) {
-        p.topHeight =
-          p.baseTopHeight +
-          Math.sin(game.frame * p.waveSpeed + p.waveOffset) * p.waveAmp;
-
-        p.topHeight = Math.max(
-          60,
-          Math.min(GAME_HEIGHT - GROUND_HEIGHT - p.gap - 60, p.topHeight)
+      if (game.weaponId === 'lightning' && game.zapCharge < game.weaponDef.maxCharge) {
+        game.zapCharge = Math.min(
+          game.weaponDef.maxCharge,
+          game.zapCharge + game.weaponDef.rechargeRate
         );
       }
-    });
 
-    for (const p of game.pipes) {
-      const gapBottom = p.topHeight + p.gap;
+      if (game.burstPending.length > 0) {
+        const ready = [];
+        const waiting = [];
 
-      const playerLeft = game.player.x - playerHalf;
-      const playerRight = game.player.x + playerHalf;
-      const pipeLeft = p.x;
-      const pipeRight = p.x + PIPE_WIDTH;
-
-      const overlapsPipeX = playerRight > pipeLeft && playerLeft < pipeRight;
-
-      if (game.invincible === 0 && overlapsPipeX) {
-        const hitTopPipe = game.player.y - playerHalf < p.topHeight;
-        const hitBottomPipe = game.player.y + playerHalf > gapBottom;
-
-        if (hitTopPipe || hitBottomPipe) {
-          if (handleShieldHit(game)) {
-            if (hitTopPipe) {
-              game.player.y = p.topHeight + playerHalf + 4;
-            } else {
-              game.player.y = gapBottom - playerHalf - 4;
-            }
+        for (const item of game.burstPending) {
+          if (game.frame >= item.fireAtFrame) {
+            ready.push(item);
           } else {
-            if (tryPortalRescue(game)) {
+            waiting.push(item);
+          }
+        }
+
+        game.burstPending = waiting;
+
+        for (const item of ready) {
+          game.bullets.push({
+            ...item.bullet,
+            spawnFrame: game.frame,
+          });
+        }
+      }
+
+      if (game.autoHeld) {
+        shoot();
+      }
+
+      if (game.started) {
+        game.player.velocity += GRAVITY;
+        game.player.y += game.player.velocity;
+      }
+
+      if (game.shieldLevel === 2 && game.shieldDurationLeft > 0) {
+        game.shieldDurationLeft--;
+        if (game.shieldDurationLeft === 0) {
+          game.shieldKillsEnemies = false;
+          game.shieldLevel = 0;
+          game.shieldHitsLeft = 0;
+          game.shields = 0;
+        }
+      }
+
+      if (game.tunnelBombActive) {
+        game.tunnelBombTimer--;
+        if (game.tunnelBombTimer <= 0) {
+          game.tunnelBombActive = false;
+          game.pipeGap = PIPE_GAP;
+        }
+      }
+
+      game.portalEffects = game.portalEffects
+        .map((p) => ({
+          ...p,
+          life: p.life - 1,
+        }))
+        .filter((p) => p.life > 0);
+
+      if (game.started) {
+        game.pipeTimer++;
+
+        const spawnInterval = Math.max(
+          tier.pipeSpawnMin,
+          140 - game.score * tier.pipeSpawnDecay
+        );
+
+        if (game.pipeTimer >= spawnInterval) {
+          game.pipeTimer = 0;
+
+          const gap = game.pipeGap;
+          const minTop = 60;
+          const maxTop = groundY - gap - 60;
+          const topHeight = minTop + Math.random() * Math.max(10, maxTop - minTop);
+
+          let dynamicChance = 0;
+          if (game.score >= 20 && game.score < 40) {
+            dynamicChance = 0.3;
+          } else if (game.score >= 40) {
+            dynamicChance = 0.5;
+          }
+
+          const isDynamic = Math.random() < dynamicChance;
+
+          game.pipes.push({
+            x: GAME_WIDTH + 10,
+            topHeight,
+            baseTopHeight: topHeight,
+            gap,
+            scored: false,
+            dynamic: isDynamic,
+            waveAmp: isDynamic ? (game.score >= 40 ? 22 : 18) : 0,
+            waveSpeed: isDynamic ? (game.score >= 40 ? 0.05 : 0.04) : 0,
+            waveOffset: Math.random() * Math.PI * 2,
+          });
+
+          game.enemyTimer = Math.min(game.enemyTimer, 35);
+        }
+      }
+
+      game.pipes.forEach((p) => {
+        if (game.postTeleportFreeze <= 0) {
+          p.x -= game.speed;
+        }
+
+        if (p.dynamic) {
+          p.topHeight =
+            p.baseTopHeight +
+            Math.sin(game.frame * p.waveSpeed + p.waveOffset) * p.waveAmp;
+
+          p.topHeight = Math.max(
+            60,
+            Math.min(GAME_HEIGHT - GROUND_HEIGHT - p.gap - 60, p.topHeight)
+          );
+        }
+      });
+
+      for (const p of game.pipes) {
+        const gapBottom = p.topHeight + p.gap;
+
+        const playerLeft = game.player.x - playerHalf;
+        const playerRight = game.player.x + playerHalf;
+        const pipeLeft = p.x;
+        const pipeRight = p.x + PIPE_WIDTH;
+
+        const overlapsPipeX = playerRight > pipeLeft && playerLeft < pipeRight;
+
+        if (game.invincible === 0 && overlapsPipeX) {
+          const hitTopPipe = game.player.y - playerHalf < p.topHeight;
+          const hitBottomPipe = game.player.y + playerHalf > gapBottom;
+
+          if (hitTopPipe || hitBottomPipe) {
+            if (handleShieldHit(game)) {
+              if (hitTopPipe) {
+                game.player.y = p.topHeight + playerHalf + 4;
+              } else {
+                game.player.y = gapBottom - playerHalf - 4;
+              }
+            } else {
+              if (tryPortalRescue(game)) {
+                break;
+              }
+              endRun(game);
               break;
             }
-            endRun(game);
+          }
+        }
+      }
+
+      game.pipes.forEach((p) => {
+        if (!p.scored && p.x + PIPE_WIDTH < game.player.x) {
+          p.scored = true;
+          game.score++;
+          playSfx('coin');
+          onScore(game.score, game.kills);
+        }
+      });
+
+      game.pipes = game.pipes.filter((p) => p.x > -PIPE_WIDTH - 20);
+
+      if (game.started) {
+        game.enemyTimer++;
+
+        const enemyInterval = Math.max(
+          tier.enemySpawnMin,
+          180 - game.score * tier.enemySpawnDecay
+        );
+
+        if (game.enemyTimer >= enemyInterval) {
+          game.enemyTimer = 0;
+          spawnEnemy(game);
+        }
+      }
+
+      game.enemies.forEach((e) => {
+        if (game.postTeleportFreeze <= 0) {
+          e.x -= e.speed;
+        }
+
+        if (e.type === 'ground_turret') {
+          e.y = groundY - e.size - 8;
+
+          if (e.shootCooldown > 0) {
+            e.shootCooldown--;
+          } else {
+            const dx = game.player.x - e.x;
+            const dy = game.player.y - e.y;
+            const dist = Math.max(1, Math.hypot(dx, dy));
+
+            game.enemyBullets.push({
+              x: e.x - e.size * 0.2,
+              y: e.y - e.size * 0.5,
+              vx: (dx / dist) * 4.5,
+              vy: (dy / dist) * 4.5,
+              size: 4,
+              life: 160,
+            });
+
+            e.shootCooldown = 85 + Math.floor(Math.random() * 45);
+            playSfx('shoot');
+          }
+        } else if (e.type === 'seeker') {
+          const dy = game.player.y - e.y;
+          e.vy += dy * 0.008;
+          e.vy = Math.max(-3, Math.min(3, e.vy));
+          e.y += e.vy;
+          e.y = Math.max(30, Math.min(groundY - 20, e.y));
+        } else {
+          e.vy = Math.sin(game.frame * 0.04 + e.seed) * 1.5;
+          e.y += e.vy;
+          e.y = Math.max(30, Math.min(groundY - 20, e.y));
+        }
+      });
+
+      game.bullets.forEach((b) => {
+        b.x += b.vx ?? (b.weaponType === 'lightning_zap' ? 20 : 14);
+        b.y += b.vy ?? 0;
+      });
+
+      game.enemyBullets.forEach((b) => {
+        b.x += b.vx;
+        b.y += b.vy;
+        b.life--;
+      });
+
+      game.enemyBullets = game.enemyBullets.filter(
+        (b) =>
+          b.life > 0 &&
+          b.x > -40 &&
+          b.x < GAME_WIDTH + 40 &&
+          b.y > -40 &&
+          b.y < GAME_HEIGHT + 40
+      );
+
+      game.bullets = game.bullets.filter((b) => {
+        if (b.x > GAME_WIDTH) return false;
+
+        for (const e of game.enemies) {
+          const dx = b.x - e.x;
+          const dy = b.y - e.y;
+          if (Math.abs(dx) < e.size + 10 && Math.abs(dy) < e.size) {
+            e.hp--;
+            explode(game, b.x, b.y, b.color || '#ffff00', '#ff0000', 6);
+            if (e.hp <= 0) killEnemy(game, e);
+            return false;
+          }
+        }
+
+        return true;
+      });
+
+      game.rockets.forEach((r) => {
+        r.age++;
+
+        let nearest = null;
+        let nearDist = Infinity;
+
+        game.enemies.forEach((e) => {
+          if (e.dead) return;
+          const d = Math.hypot(e.x - r.x, e.y - r.y);
+          if (d < nearDist) {
+            nearDist = d;
+            nearest = e;
+          }
+        });
+
+        if (nearest) {
+          const angle = Math.atan2(nearest.y - r.y, nearest.x - r.x);
+          r.vx += Math.cos(angle) * 0.8;
+          r.vy += Math.sin(angle) * 0.8;
+          const spd = Math.hypot(r.vx, r.vy);
+          if (spd > 10) {
+            r.vx = (r.vx / spd) * 10;
+            r.vy = (r.vy / spd) * 10;
+          }
+        }
+
+        r.x += r.vx;
+        r.y += r.vy;
+
+        for (const e of game.enemies) {
+          if (e.dead) continue;
+          if (Math.hypot(e.x - r.x, e.y - r.y) < e.size + 8) {
+            explode(game, r.x, r.y, '#ff4400', '#ffff00', 10);
+            e.hp -= 3;
+            if (e.hp <= 0) killEnemy(game, e);
+            r.dead = true;
             break;
           }
         }
-      }
-    }
 
-    game.pipes.forEach((p) => {
-      if (!p.scored && p.x + PIPE_WIDTH < game.player.x) {
-        p.scored = true;
-        game.score++;
-        playSfx('coin');
-        onScore(game.score, game.kills);
-      }
-    });
-
-    game.pipes = game.pipes.filter((p) => p.x > -PIPE_WIDTH - 20);
-
-    if (game.started) {
-      game.enemyTimer++;
-
-      const enemyInterval = Math.max(
-        tier.enemySpawnMin,
-        180 - game.score * tier.enemySpawnDecay
-      );
-
-      if (game.enemyTimer >= enemyInterval) {
-        game.enemyTimer = 0;
-        spawnEnemy(game);
-      }
-    }
-
-    game.enemies.forEach((e) => {
-      if (game.postTeleportFreeze <= 0) {
-        e.x -= e.speed;
-      }
-
-      if (e.type === 'seeker') {
-        const dy = game.player.y - e.y;
-        e.vy += dy * 0.008;
-        e.vy = Math.max(-3, Math.min(3, e.vy));
-      } else {
-        e.vy = Math.sin(game.frame * 0.04 + e.seed) * 1.5;
-      }
-
-      e.y += e.vy;
-      e.y = Math.max(30, Math.min(groundY - 20, e.y));
-    });
-
-    game.bullets.forEach((b) => {
-      b.x += b.vx ?? (b.weaponType === 'lightning_zap' ? 20 : 14);
-      b.y += b.vy ?? 0;
-    });
-
-    game.bullets = game.bullets.filter((b) => {
-      if (b.x > GAME_WIDTH) return false;
-
-      for (const e of game.enemies) {
-        const dx = b.x - e.x;
-        const dy = b.y - e.y;
-        if (Math.abs(dx) < e.size + 10 && Math.abs(dy) < e.size) {
-          e.hp--;
-          explode(game, b.x, b.y, b.color || '#ffff00', '#ff0000', 6);
-          if (e.hp <= 0) killEnemy(game, e);
-          return false;
-        }
-      }
-
-      return true;
-    });
-
-    game.rockets.forEach((r) => {
-      r.age++;
-
-      let nearest = null;
-      let nearDist = Infinity;
-
-      game.enemies.forEach((e) => {
-        if (e.dead) return;
-        const d = Math.hypot(e.x - r.x, e.y - r.y);
-        if (d < nearDist) {
-          nearDist = d;
-          nearest = e;
-        }
-      });
-
-      if (nearest) {
-        const angle = Math.atan2(nearest.y - r.y, nearest.x - r.x);
-        r.vx += Math.cos(angle) * 0.8;
-        r.vy += Math.sin(angle) * 0.8;
-        const spd = Math.hypot(r.vx, r.vy);
-        if (spd > 10) {
-          r.vx = (r.vx / spd) * 10;
-          r.vy = (r.vy / spd) * 10;
-        }
-      }
-
-      r.x += r.vx;
-      r.y += r.vy;
-
-      for (const e of game.enemies) {
-        if (e.dead) continue;
-        if (Math.hypot(e.x - r.x, e.y - r.y) < e.size + 8) {
-          explode(game, r.x, r.y, '#ff4400', '#ffff00', 10);
-          e.hp -= 3;
-          if (e.hp <= 0) killEnemy(game, e);
-          r.dead = true;
-          break;
-        }
-      }
-
-      game.particles.push({
-        x: r.x,
-        y: r.y,
-        vx: -r.vx * 0.3,
-        vy: (Math.random() - 0.5) * 2,
-        life: 12,
-        color: '#ff6600',
-        type: 'trail',
-        size: 3,
-      });
-    });
-
-    game.rockets = game.rockets.filter(
-      (r) => !r.dead && r.x < GAME_WIDTH + 50 && r.x > -50 && r.age < 180
-    );
-
-    game.zapArcs = game.zapArcs.filter((z) => {
-      z.life--;
-      return z.life > 0;
-    });
-
-    game.tunnelBombs.forEach((b) => {
-      b.x += b.vx;
-      b.y += b.vy;
-      b.age++;
-      b.vy += 0.05;
-
-      if (b.x > GAME_WIDTH + 40 || b.y > GAME_HEIGHT) {
-        explode(game, Math.min(b.x, GAME_WIDTH - 10), b.y, '#ff6600', '#ffaa00', 20);
-        b.dead = true;
-        game.tunnelBombActive = true;
-        game.tunnelBombTimer = 3600;
-        game.pipeGap = PIPE_GAP_BOMB;
-        playSfx('explosion');
-      }
-    });
-
-    game.tunnelBombs = game.tunnelBombs.filter((b) => !b.dead);
-
-    game.blasts.forEach((bl) => {
-      bl.life--;
-    });
-    game.blasts = game.blasts.filter((bl) => bl.life > 0);
-
-    if (game.invincible === 0) {
-      for (let i = game.enemies.length - 1; i >= 0; i--) {
-        const e = game.enemies[i];
-        if (e.dead) continue;
-
-        const dx = e.x - game.player.x;
-        const dy = e.y - game.player.y;
-        const dist = Math.hypot(dx, dy);
-
-        if (dist < e.size + 12) {
-          if (game.shieldKillsEnemies) {
-            killEnemy(game, e);
-            continue;
-          }
-
-          if (handleShieldHit(game)) {
-            continue;
-          }
-
-          if (endRun(game)) break;
-        }
-      }
-    }
-
-    if (game.invincible === 0) {
-      const hitTopBoundary = game.player.y - playerHalf <= 0;
-      const hitBottomBoundary = game.player.y + playerHalf >= groundY;
-
-      if (hitTopBoundary || hitBottomBoundary) {
-        if (handleShieldHit(game)) {
-          if (hitTopBoundary) {
-            game.player.y = playerHalf + 2;
-          } else {
-            game.player.y = groundY - playerHalf - 2;
-          }
-        } else {
-          if (!tryPortalRescue(game)) {
-            endRun(game);
-          }
-        }
-      } else {
-        game.player.y = Math.max(
-          playerHalf + 2,
-          Math.min(groundY - playerHalf - 2, game.player.y)
-        );
-      }
-    }
-
-    game.enemies = game.enemies.filter((e) => !e.dead && e.x > -80);
-
-    game.particles.forEach((p) => {
-      p.x += p.vx;
-      p.y += p.vy;
-      p.vy += 0.05;
-      p.life--;
-    });
-    game.particles = game.particles.filter((p) => p.life > 0);
-
-    drawBackground(ctx, GAME_WIDTH, GAME_HEIGHT, game.frame, game.scrollX);
-    game.pipes.forEach((p) =>
-      drawPipe(ctx, p.x, p.topHeight, p.gap || PIPE_GAP, GAME_HEIGHT, game.frame)
-    );
-    game.enemies.forEach((e) => drawEnemy(ctx, e, game.frame));
-    game.bullets.forEach((b) => drawBullet(ctx, b));
-    game.rockets.forEach((r) => drawBullet(ctx, { ...r, weaponType: 'rocket' }));
-    game.blasts.forEach((bl) => drawBlast(ctx, bl, GAME_WIDTH, GAME_HEIGHT));
-    game.tunnelBombs.forEach((b) => drawTunnelBomb(ctx, b));
-    game.zapArcs.forEach((z) => drawZapArc(ctx, z.x1, z.y1, z.x2, z.y2));
-
-    game.particles.forEach((p) => {
-      ctx.save();
-      ctx.globalAlpha = Math.max(0, p.life / (p.type === 'explosion' ? 40 : 20));
-      ctx.shadowColor = p.color;
-      ctx.shadowBlur = p.type === 'explosion' ? 10 : 4;
-      ctx.fillStyle = p.color;
-      ctx.fillRect(p.x, p.y, p.size || 3, p.size || 3);
-      ctx.restore();
-    });
-
-    const showPlayer =
-      gameState !== 'playing' || game.invincible === 0 || game.frame % 6 < 4;
-
-    if (showPlayer) {
-      if (gameState === 'playing' || gameState === 'gameover') {
-        if (game.teleportWindup) {
-          const t = 1 - game.teleportWindup.framesLeft / 12;
-          const easeIn = t * t * (3 - 2 * t);
-
-          const pullX = game.player.x - easeIn * 26;
-          const pullY = game.player.y + Math.sin(easeIn * Math.PI) * 4;
-          const fakeVelocity = game.player.velocity - easeIn * 3;
-
-          const scale = Math.max(0.08, 1 - easeIn * 0.82);
-          const alpha = Math.max(0.04, 1 - easeIn * 0.92);
-
-          ctx.save();
-          ctx.globalAlpha = alpha;
-          ctx.translate(pullX, pullY);
-          ctx.rotate(-easeIn * 0.2);
-          ctx.scale(scale, scale);
-
-          drawPlayerSkin(
-            ctx,
-            0,
-            0,
-            fakeVelocity,
-            game.shields,
-            skinId || 'default',
-            game.frame
-          );
-
-          ctx.restore();
-
-          ctx.save();
-          ctx.globalAlpha = 0.22 * (1 - easeIn);
-          ctx.translate(pullX + 10, pullY);
-          ctx.scale(scale * 1.15, scale * 1.15);
-
-          drawPlayerSkin(
-            ctx,
-            0,
-            0,
-            fakeVelocity,
-            game.shields,
-            skinId || 'default',
-            game.frame
-          );
-
-          ctx.restore();
-        } else {
-          drawPlayerSkin(
-            ctx,
-            game.player.x,
-            game.player.y,
-            game.player.velocity,
-            game.shields,
-            skinId || 'default',
-            game.frame
-          );
-        }
-
-        game.portalEffects.forEach((portal) => {
-          drawPortal(ctx, portal);
+        game.particles.push({
+          x: r.x,
+          y: r.y,
+          vx: -r.vx * 0.3,
+          vy: (Math.random() - 0.5) * 2,
+          life: 12,
+          color: '#ff6600',
+          type: 'trail',
+          size: 3,
         });
+      });
 
-        if (game.weaponId === 'rocket' && gameState === 'playing') {
-          drawRocketPods(ctx, game.player.x, game.player.y, game.frame);
+      game.rockets = game.rockets.filter(
+        (r) => !r.dead && r.x < GAME_WIDTH + 50 && r.x > -50 && r.age < 180
+      );
+
+      game.zapArcs = game.zapArcs.filter((z) => {
+        z.life--;
+        return z.life > 0;
+      });
+
+      game.tunnelBombs.forEach((b) => {
+        b.x += b.vx;
+        b.y += b.vy;
+        b.age++;
+        b.vy += 0.05;
+
+        if (b.x > GAME_WIDTH + 40 || b.y > GAME_HEIGHT) {
+          explode(game, Math.min(b.x, GAME_WIDTH - 10), b.y, '#ff6600', '#ffaa00', 20);
+          b.dead = true;
+          game.tunnelBombActive = true;
+          game.tunnelBombTimer = 3600;
+          game.pipeGap = PIPE_GAP_BOMB;
+          playSfx('explosion');
+        }
+      });
+
+      game.tunnelBombs = game.tunnelBombs.filter((b) => !b.dead);
+
+      game.blasts.forEach((bl) => {
+        bl.life--;
+      });
+      game.blasts = game.blasts.filter((bl) => bl.life > 0);
+
+      if (game.invincible === 0) {
+        for (let i = game.enemies.length - 1; i >= 0; i--) {
+          const e = game.enemies[i];
+          if (e.dead) continue;
+
+          const dx = e.x - game.player.x;
+          const dy = e.y - game.player.y;
+          const dist = Math.hypot(dx, dy);
+
+          if (dist < e.size + 12) {
+            if (game.shieldKillsEnemies) {
+              killEnemy(game, e);
+              continue;
+            }
+
+            if (handleShieldHit(game)) {
+              continue;
+            }
+
+            if (endRun(game)) break;
+          }
         }
 
-        if (game.shieldKillsEnemies && game.shieldDurationLeft > 0) {
-          ctx.save();
-          ctx.shadowColor = '#870101';
-          ctx.shadowBlur = 20;
-          ctx.strokeStyle = `rgba(170,68,255,${0.4 + Math.sin(game.frame * 0.1) * 0.2})`;
-          ctx.lineWidth = 3;
-          ctx.beginPath();
-          ctx.arc(game.player.x, game.player.y, PLAYER_SIZE + 10, 0, Math.PI * 2);
-          ctx.stroke();
-          ctx.restore();
+        for (let i = game.enemyBullets.length - 1; i >= 0; i--) {
+          const b = game.enemyBullets[i];
+          const dx = b.x - game.player.x;
+          const dy = b.y - game.player.y;
+          const dist = Math.hypot(dx, dy);
+
+          if (dist < (b.size || 4) + 12) {
+            game.enemyBullets.splice(i, 1);
+            explode(game, b.x, b.y, '#ff3355', '#ffaa33', 8);
+
+            if (handleShieldHit(game)) {
+              continue;
+            }
+
+            if (endRun(game)) break;
+          }
         }
-      } else {
-        const iy = GAME_HEIGHT / 2 + Math.sin(Date.now() * 0.003) * 15;
-        drawPlayerSkin(
+      }
+
+      if (game.invincible === 0) {
+        const hitTopBoundary = game.player.y - playerHalf <= 0;
+        const hitBottomBoundary = game.player.y + playerHalf >= groundY;
+
+        if (hitTopBoundary || hitBottomBoundary) {
+          if (handleShieldHit(game)) {
+            if (hitTopBoundary) {
+              game.player.y = playerHalf + 2;
+            } else {
+              game.player.y = groundY - playerHalf - 2;
+            }
+          } else {
+            if (!tryPortalRescue(game)) {
+              endRun(game);
+            }
+          }
+        } else {
+          game.player.y = Math.max(
+            playerHalf + 2,
+            Math.min(groundY - playerHalf - 2, game.player.y)
+          );
+        }
+      }
+
+      game.enemies = game.enemies.filter((e) => !e.dead && e.x > -80);
+      game.enemyBullets = game.enemyBullets.filter((b) => !b.dead);
+
+      game.particles.forEach((p) => {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.05;
+        p.life--;
+      });
+      game.particles = game.particles.filter((p) => p.life > 0);
+
+      drawBackground(ctx, GAME_WIDTH, GAME_HEIGHT, game.frame, game.scrollX);
+      game.pipes.forEach((p) =>
+        drawPipe(ctx, p.x, p.topHeight, p.gap || PIPE_GAP, GAME_HEIGHT, game.frame)
+      );
+      game.enemies.forEach((e) => drawEnemy(ctx, e, game.frame));
+      game.bullets.forEach((b) => drawBullet(ctx, b));
+
+      game.enemyBullets.forEach((b) => {
+        ctx.save();
+        ctx.fillStyle = '#ff5577';
+        ctx.shadowColor = '#ff5577';
+        ctx.shadowBlur = 10;
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, b.size || 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      });
+
+      game.rockets.forEach((r) => drawBullet(ctx, { ...r, weaponType: 'rocket' }));
+      game.blasts.forEach((bl) => drawBlast(ctx, bl, GAME_WIDTH, GAME_HEIGHT));
+      game.tunnelBombs.forEach((b) => drawTunnelBomb(ctx, b));
+      game.zapArcs.forEach((z) => drawZapArc(ctx, z.x1, z.y1, z.x2, z.y2));
+
+      game.particles.forEach((p) => {
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, p.life / (p.type === 'explosion' ? 40 : 20));
+        ctx.shadowColor = p.color;
+        ctx.shadowBlur = p.type === 'explosion' ? 10 : 4;
+        ctx.fillStyle = p.color;
+        ctx.fillRect(p.x, p.y, p.size || 3, p.size || 3);
+        ctx.restore();
+      });
+
+      const showPlayer =
+        gameState !== 'playing' || game.invincible === 0 || game.frame % 6 < 4;
+
+      if (showPlayer) {
+        if (gameState === 'playing' || gameState === 'gameover') {
+          if (game.teleportWindup) {
+            const t = 1 - game.teleportWindup.framesLeft / 12;
+            const easeIn = t * t * (3 - 2 * t);
+
+            const pullX = game.player.x - easeIn * 26;
+            const pullY = game.player.y + Math.sin(easeIn * Math.PI) * 4;
+            const fakeVelocity = game.player.velocity - easeIn * 3;
+
+            const scale = Math.max(0.08, 1 - easeIn * 0.82);
+            const alpha = Math.max(0.04, 1 - easeIn * 0.92);
+
+            ctx.save();
+            ctx.globalAlpha = alpha;
+            ctx.translate(pullX, pullY);
+            ctx.rotate(-easeIn * 0.2);
+            ctx.scale(scale, scale);
+
+            drawPlayerSkin(
+              ctx,
+              0,
+              0,
+              fakeVelocity,
+              game.shields,
+              skinId || 'default',
+              game.frame
+            );
+
+            ctx.restore();
+
+            ctx.save();
+            ctx.globalAlpha = 0.22 * (1 - easeIn);
+            ctx.translate(pullX + 10, pullY);
+            ctx.scale(scale * 1.15, scale * 1.15);
+
+            drawPlayerSkin(
+              ctx,
+              0,
+              0,
+              fakeVelocity,
+              game.shields,
+              skinId || 'default',
+              game.frame
+            );
+
+            ctx.restore();
+          } else {
+            drawPlayerSkin(
+              ctx,
+              game.player.x,
+              game.player.y,
+              game.player.velocity,
+              game.shields,
+              skinId || 'default',
+              game.frame
+            );
+          }
+
+          game.portalEffects.forEach((portal) => {
+            drawPortal(ctx, portal);
+          });
+
+          if (game.weaponId === 'rocket' && gameState === 'playing') {
+            drawRocketPods(ctx, game.player.x, game.player.y, game.frame);
+          }
+
+          if (game.shieldKillsEnemies && game.shieldDurationLeft > 0) {
+            ctx.save();
+            ctx.shadowColor = '#870101';
+            ctx.shadowBlur = 20;
+            ctx.strokeStyle = `rgba(170,68,255,${0.4 + Math.sin(game.frame * 0.1) * 0.2})`;
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(game.player.x, game.player.y, PLAYER_SIZE + 10, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+          }
+        } else {
+          const iy = GAME_HEIGHT / 2 + Math.sin(Date.now() * 0.003) * 15;
+          drawPlayerSkin(
+            ctx,
+            120,
+            iy,
+            Math.sin(Date.now() * 0.003) * 2,
+            MAX_SHIELDS,
+            skinId || 'default',
+            game.frame
+          );
+        }
+      }
+
+      if (gameState === 'playing') {
+        drawHUD(
           ctx,
-          120,
-          iy,
-          Math.sin(Date.now() * 0.003) * 2,
-          MAX_SHIELDS,
-          skinId || 'default',
-          game.frame
+          game.score,
+          game.shields,
+          game.kills,
+          GAME_WIDTH,
+          game.killStreak,
+          game.blastReady,
+          game.tunnelBombActive,
+          game.tunnelBombTimer,
+          game.weaponId,
+          game.zapCharge,
+          game.weaponDef?.maxCharge || 180,
+          game.comboSpecialId,
+          game.comboSpecialUses
         );
       }
-    }
 
-    if (gameState === 'playing') {
-      drawHUD(
-        ctx,
-        game.score,
-        game.shields,
-        game.kills,
-        GAME_WIDTH,
-        game.killStreak,
-        game.blastReady,
-        game.tunnelBombActive,
-        game.tunnelBombTimer,
-        game.weaponId,
-        game.zapCharge,
-        game.weaponDef?.maxCharge || 180,
-        game.comboSpecialId,
-        game.comboSpecialUses
-      );
-    }
+      animId = requestAnimationFrame(loop);
+    };
 
     animId = requestAnimationFrame(loop);
-  };
+    return () => cancelAnimationFrame(animId);
+  }, [gameState, onGameOver, onScore, skinId, onBlastReadyChange, onTunnelBombReadyChange]);
 
-  animId = requestAnimationFrame(loop);
-  return () => cancelAnimationFrame(animId);
-}, [gameState, onGameOver, onScore, skinId, onBlastReadyChange, onTunnelBombReadyChange]);
-
-return (
-  <canvas
-    ref={canvasRef}
-    width={GAME_WIDTH}
-    height={GAME_HEIGHT}
-    onMouseDown={handleCanvasPointerDown}
-    onMouseUp={handleCanvasPointerUp}
-    onMouseLeave={handleCanvasPointerUp}
-    onTouchStart={handleTouchStart}
-    onTouchEnd={handleTouchEnd}
-    onTouchCancel={handleTouchEnd}
-    className="block max-w-full h-auto rounded-lg"
-    style={{
-      cursor: 'crosshair',
-      border: '1px solid hsla(180, 100%, 50%, 0.3)',
-      boxShadow:
-        '0 0 30px hsla(180, 100%, 50%, 0.15), 0 0 60px hsla(300, 100%, 50%, 0.08)',
-    }}
-  />
-);
+  return (
+    <canvas
+      ref={canvasRef}
+      width={GAME_WIDTH}
+      height={GAME_HEIGHT}
+      onMouseDown={handleCanvasPointerDown}
+      onMouseUp={handleCanvasPointerUp}
+      onMouseLeave={handleCanvasPointerUp}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+      onTouchCancel={handleTouchEnd}
+      className="block max-w-full h-auto rounded-lg"
+      style={{
+        cursor: 'crosshair',
+        border: '1px solid hsla(180, 100%, 50%, 0.3)',
+        boxShadow:
+          '0 0 30px hsla(180, 100%, 50%, 0.15), 0 0 60px hsla(300, 100%, 50%, 0.08)',
+      }}
+    />
+  );
 }

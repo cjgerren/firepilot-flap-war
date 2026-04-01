@@ -2,6 +2,7 @@
 
 const KEYS = {
   coins: 'nd_coins',
+  diamonds: 'nd_diamonds',
 
   // Skins
   owned: 'nd_owned',
@@ -104,6 +105,36 @@ export function spendCoins(amount) {
 
 export function canAfford(amount) {
   return getCoins() >= Math.max(0, clampInt(amount, 0));
+}
+
+export function getDiamonds() {
+  return clampInt(localStorage.getItem(KEYS.diamonds), 0);
+}
+
+export function setDiamonds(amount) {
+  const safe = Math.max(0, clampInt(amount, 0));
+  localStorage.setItem(KEYS.diamonds, String(safe));
+  return safe;
+}
+
+export function addDiamonds(amount) {
+  const next = Math.max(0, getDiamonds() + clampInt(amount, 0));
+  localStorage.setItem(KEYS.diamonds, String(next));
+  return next;
+}
+
+export function spendDiamonds(amount) {
+  const cost = Math.max(0, clampInt(amount, 0));
+  const current = getDiamonds();
+
+  if (current < cost) return false;
+
+  localStorage.setItem(KEYS.diamonds, String(current - cost));
+  return true;
+}
+
+export function canAffordDiamonds(amount) {
+  return getDiamonds() >= Math.max(0, clampInt(amount, 0));
 }
 
 // ───────────────────────────────────────────────────────────────────────────────
