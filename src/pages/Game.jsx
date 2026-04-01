@@ -15,6 +15,75 @@ import { useAuth } from '../lib/AuthContext';
 import audioManager from '../lib/audioManager';
 import useAudioUnlock from '../lib/useAudioUnlock';
 
+function MobileBtn({
+  onPress,
+  onRelease,
+  style,
+  color,
+  border,
+  bg,
+  icon,
+  label,
+  bold = false,
+}) {
+  return (
+    <button
+      type="button"
+      onMouseDown={(e) => {
+        e.preventDefault();
+        onPress?.();
+      }}
+      onMouseUp={(e) => {
+        e.preventDefault();
+        onRelease?.();
+      }}
+      onMouseLeave={(e) => {
+        e.preventDefault();
+        onRelease?.();
+      }}
+      onTouchStart={(e) => {
+        e.preventDefault();
+        onPress?.();
+      }}
+      onTouchEnd={(e) => {
+        e.preventDefault();
+        onRelease?.();
+      }}
+      className="absolute pointer-events-auto select-none rounded-2xl px-4 py-3 flex flex-col items-center justify-center"
+      style={{
+        minWidth: 58,
+        minHeight: 58,
+        border: `1px solid ${border}`,
+        background: bg,
+        boxShadow: `0 0 18px ${color}33`,
+        ...style,
+      }}
+    >
+      <span
+        className="leading-none"
+        style={{
+          color,
+          fontSize: 18,
+          fontWeight: bold ? 800 : 600,
+          textShadow: `0 0 10px ${color}66`,
+        }}
+      >
+        {icon}
+      </span>
+      <span
+        className="font-mono text-[10px] mt-1"
+        style={{
+          color,
+          fontWeight: bold ? 800 : 600,
+          letterSpacing: '0.08em',
+        }}
+      >
+        {label}
+      </span>
+    </button>
+  );
+}
+
 export default function Game() {
   const [gameState, setGameState] = useState('idle');
   const [score, setScore] = useState(0);
@@ -31,6 +100,8 @@ export default function Game() {
   const shootRef = useRef(null);
   const blastRef = useRef(null);
   const tunnelBombRef = useRef(null);
+  const startFireRef = useRef(null);
+  const stopFireRef = useRef(null);
 
   const { user } = useAuth();
 
@@ -124,6 +195,27 @@ export default function Game() {
     };
   }, []);
 
+  useEffect(() => {
+    const startOnFirstInput = () => {
+      setGameState((prev) => {
+        if (prev === 'ready') {
+          return 'playing';
+        }
+        return prev;
+      });
+    };
+
+    window.addEventListener('keydown', startOnFirstInput);
+    window.addEventListener('mousedown', startOnFirstInput);
+    window.addEventListener('touchstart', startOnFirstInput);
+
+    return () => {
+      window.removeEventListener('keydown', startOnFirstInput);
+      window.removeEventListener('mousedown', startOnFirstInput);
+      window.removeEventListener('touchstart', startOnFirstInput);
+    };
+  }, []);
+
   const handleStart = useCallback(() => {
     audioManager.unlock();
     audioManager.playSfx('click');
@@ -134,7 +226,20 @@ export default function Game() {
     setBlastReady(false);
     setTunnelBombReady(false);
     killsRef.current = 0;
-    setGameState('playing');
+    setGameState('ready');
+  }, []);
+
+  const handleReturnToMenu = useCallback(() => {
+    audioManager.playSfx('click');
+    setBlastReady(false);
+    setTunnelBombReady(false);
+    setCoinsEarned(0);
+    setScore(0);
+    setKills(0);
+    killsRef.current = 0;
+    setLocalCoins(getCoins());
+    setSkinId(getSelectedSkin());
+    setGameState('idle');
   }, []);
 
   const handleGameOver = useCallback(async (finalScore, finalKills) => {
@@ -189,6 +294,8 @@ export default function Game() {
           shootRef={shootRef}
           blastRef={blastRef}
           tunnelBombRef={tunnelBombRef}
+          startFireRef={startFireRef}
+          stopFireRef={stopFireRef}
         />
 
         <MainMenu
@@ -197,6 +304,7 @@ export default function Game() {
           kills={kills}
           coinsEarned={coinsEarned}
           onStart={handleStart}
+          onReturnToMenu={handleReturnToMenu}
           onSkinChange={handleSkinChange}
         />
 
@@ -213,7 +321,8 @@ export default function Game() {
             />
 
             <MobileBtn
-              onPress={() => shootRef.current?.()}
+              onPress={() => startFireRef.current?.()}
+              onRelease={() => stopFireRef.current?.()}
               style={{ bottom: 14, right: 14 + specialCount * 68, transition: 'right 0.2s' }}
               color="#ffff00"
               border="hsla(60,100%,50%,0.5)"
@@ -270,42 +379,5 @@ export default function Game() {
         }
       `}</style>
     </div>
-  );
-}
-
-function MobileBtn({ onPress, style, color, border, bg, icon, label, bold }) {
-  return (
-    <button
-      onTouchStart={(e) => {
-        e.preventDefault();
-        onPress();
-      }}
-      onClick={onPress}
-      className="absolute pointer-events-auto"
-      style={{
-        width: 58,
-        height: 58,
-        borderRadius: '50%',
-        background: bg,
-        border: `1.5px solid ${border}`,
-        color,
-        fontFamily: 'Orbitron, sans-serif',
-        fontWeight: bold ? 900 : 700,
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 1,
-        backdropFilter: 'blur(4px)',
-        WebkitBackdropFilter: 'blur(4px)',
-        userSelect: 'none',
-        WebkitUserSelect: 'none',
-        touchAction: 'none',
-        ...style,
-      }}
-    >
-      <span style={{ fontSize: 18, lineHeight: 1 }}>{icon}</span>
-      <span style={{ fontSize: 7 }}>{label}</span>
-    </button>
   );
 }
