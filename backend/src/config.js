@@ -15,6 +15,7 @@ export const CORS_ORIGINS = [
 
 export const STRIPE_SECRET_KEY = env.STRIPE_SECRET_KEY || '';
 export const STRIPE_WEBHOOK_SECRET = env.STRIPE_WEBHOOK_SECRET || '';
+export const REVENUECAT_WEBHOOK_AUTH = env.REVENUECAT_WEBHOOK_AUTH || '';
 export const SUPABASE_URL = env.SUPABASE_URL || '';
 export const SUPABASE_SERVICE_ROLE_KEY = env.SUPABASE_SERVICE_ROLE_KEY || '';
 

@@ -1,3 +1,7 @@
+import { Capacitor } from '@capacitor/core';
+import { PRODUCT_CATEGORY, Purchases } from '@revenuecat/purchases-capacitor';
+import { pullCloudSaveToLocal } from '@/lib/cloudSave';
+
 export const COIN_PACKS = [
   {
     id: 'coins_100',
@@ -99,6 +103,36 @@ export function formatUsdFromCents(amount) {
   return `$${(amount / 100).toFixed(2)}`;
 }
 
+let nativePurchasesUserId = null;
+
+function isNativeStoreBuild() {
+  return Capacitor.isNativePlatform();
+}
+
+function getRevenueCatApiKey() {
+  const platform = Capacitor.getPlatform();
+  if (platform === 'ios') return import.meta.env.VITE_REVENUECAT_IOS_API_KEY?.trim();
+  if (platform === 'android') return import.meta.env.VITE_REVENUECAT_ANDROID_API_KEY?.trim();
+  return '';
+}
+
+async function configureNativePurchases(userId) {
+  const apiKey = getRevenueCatApiKey();
+
+  if (!apiKey) {
+    throw new Error('Mobile purchases are not configured for this app build.');
+  }
+
+  if (nativePurchasesUserId === userId) return;
+
+  await Purchases.configure({
+    apiKey,
+    appUserID: userId,
+  });
+
+  nativePurchasesUserId = userId;
+}
+
 function getApiBaseUrl() {
   const configuredBase = import.meta.env.VITE_API_BASE_URL?.trim();
   if (configuredBase) return configuredBase;
@@ -132,6 +166,28 @@ async function createCheckout(pack, userId, currencyType) {
 
     if (!quantity || !Number.isInteger(quantity) || quantity <= 0) {
       throw new Error(`Invalid ${currencyType} quantity`);
+    }
+
+    if (isNativeStoreBuild()) {
+      await configureNativePurchases(userId);
+
+      const { products } = await Purchases.getProducts({
+        productIdentifiers: [pack.id],
+        type: PRODUCT_CATEGORY.NON_SUBSCRIPTION,
+      });
+
+      const product = products?.[0];
+      if (!product) {
+        throw new Error(`Store product "${pack.id}" is not available for this device.`);
+      }
+
+      await Purchases.purchaseStoreProduct({ product });
+
+      // RevenueCat/webhook delivery is server-side; give it a short window, then sync.
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      await pullCloudSaveToLocal();
+      alert(`${currencyType === 'diamonds' ? 'Diamond' : 'Coin'} purchase complete. If the balance has not updated yet, refresh after a moment.`);
+      return;
     }
 
     const res = await fetch(

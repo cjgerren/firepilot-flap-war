@@ -3,6 +3,7 @@ import cors from 'cors';
 
 import stripeRoutes from './routes/stripe.js';
 import webhookRoutes from './routes/webhook.js';
+import revenueCatRoutes from './routes/revenuecat.js';
 import { CORS_ORIGINS, PORT } from './config.js';
 
 const app = express();
@@ -20,6 +21,7 @@ app.use(cors({
 
 // Stripe webhook MUST be before express.json()
 app.use('/api/webhook', webhookRoutes);
+app.use('/api/revenuecat', revenueCatRoutes);
 
 app.use(express.json());
 
