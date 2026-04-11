@@ -4,7 +4,11 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "start": "node scripts/play.mjs",
+    "play": "node scripts/play.mjs",
     "dev": "vite",
+    "dev:frontend": "vite --host 127.0.0.1 --port 5173",
+    "dev:backend": "npm --prefix backend run dev",
     "build": "vite build",
     "lint": "eslint . --quiet",
     "lint:fix": "eslint . --fix",

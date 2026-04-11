@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Lock, Check, ShoppingCart, Coins } from 'lucide-react';
+import { X, Lock, Check } from 'lucide-react';
 import { SKINS, drawPlayerSkin } from '../../lib/skins';
 import { getCoins, spendCoins, getOwnedSkins, ownSkin, getSelectedSkin, setSelectedSkin, getHighScore } from '../../lib/gameStore';
 

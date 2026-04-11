@@ -99,6 +99,22 @@ export function formatUsdFromCents(amount) {
   return `$${(amount / 100).toFixed(2)}`;
 }
 
+function getApiBaseUrl() {
+  const configuredBase = import.meta.env.VITE_API_BASE_URL?.trim();
+  if (configuredBase) return configuredBase;
+
+  if (typeof window === 'undefined') {
+    return 'http://127.0.0.1:3000/api';
+  }
+
+  const { hostname, origin } = window.location;
+  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    return 'http://127.0.0.1:3000/api';
+  }
+
+  return `${origin}/api`;
+}
+
 async function createCheckout(pack, userId, currencyType) {
   try {
     if (!pack || typeof pack !== 'object') {
@@ -119,16 +135,15 @@ async function createCheckout(pack, userId, currencyType) {
     }
 
     const res = await fetch(
-      `${import.meta.env.VITE_API_BASE_URL}/stripe/create-checkout-session`,
+      `${getApiBaseUrl()}/stripe/create-checkout-session`,
       {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          amount: pack.amount,
+          packId: pack.id,
           currencyType,
-          quantity,
           userId,
         }),
       }

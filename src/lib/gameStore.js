@@ -1,4 +1,14 @@
+import { SKINS } from './skins';
+import { WEAPONS, UPGRADES, SPECIALS, COMBO_PACKS, VEHICLES } from './gameItems';
+
 // Persistent game store backed by localStorage
+
+const DEV_KEYS = {
+  enabled: 'fp_dev_profile_enabled',
+  backup: 'fp_dev_profile_backup',
+};
+
+const DEV_BALANCE = 999999999;
 
 const KEYS = {
   coins: 'nd_coins',
@@ -75,27 +85,161 @@ function daysToMs(days) {
   return Math.max(0, Number(days) || 0) * 24 * 60 * 60 * 1000;
 }
 
+export function isDeveloperProfileActive() {
+  return localStorage.getItem(DEV_KEYS.enabled) === '1';
+}
+
+export function setDeveloperProfileActive(enabled) {
+  if (enabled) {
+    localStorage.setItem(DEV_KEYS.enabled, '1');
+  } else {
+    localStorage.removeItem(DEV_KEYS.enabled);
+  }
+}
+
+function getAllSkinIds() {
+  return SKINS.map((item) => item.id);
+}
+
+function getAllWeaponIds() {
+  return WEAPONS.map((item) => item.id);
+}
+
+function getAllUpgradeInventory() {
+  return Object.fromEntries(UPGRADES.map((item) => [item.id, 99]));
+}
+
+function getAllSpecialInventory() {
+  return Object.fromEntries(SPECIALS.map((item) => [item.id, 99]));
+}
+
+function getAllComboIds() {
+  return COMBO_PACKS.map((item) => item.id);
+}
+
+function getAllVehicleIds() {
+  return VEHICLES.map((item) => item.id);
+}
+
+function buildFreshLocalSave() {
+  return {
+    coins: 0,
+    diamonds: 0,
+    ownedSkins: ['default'],
+    selectedSkin: 'default',
+    highScore: 0,
+    totalKills: 0,
+    ownedWeapons: ['blaster'],
+    selectedWeapon: 'blaster',
+    ownedUpgrades: {},
+    equippedUpgrades: {},
+    ownedSpecials: {},
+    selectedSpecial: '',
+    equippedSpecials: {},
+    ownedCombos: [],
+    comboAccess: {},
+    ownedVehicles: ['default_jet'],
+    selectedVehicle: 'default_jet',
+    purchaseHistory: [],
+  };
+}
+
+function saveLooksLikeDeveloperProfile(save) {
+  if (!save || typeof save !== 'object') return false;
+
+  const hasDevBalance =
+    clampInt(save.coins, 0) >= DEV_BALANCE || clampInt(save.diamonds, 0) >= DEV_BALANCE;
+  const hasAllSkins = sanitizeArray(save.ownedSkins, []).length >= getAllSkinIds().length;
+  const hasAllWeapons =
+    sanitizeArray(save.ownedWeapons, []).length >= getAllWeaponIds().length;
+  const hasAllVehicles =
+    sanitizeArray(save.ownedVehicles, []).length >= getAllVehicleIds().length;
+  const hasAllCombos =
+    sanitizeArray(save.ownedCombos, []).length >= getAllComboIds().length;
+  const purchaseHistory = Array.isArray(save.purchaseHistory) ? save.purchaseHistory : [];
+  const hasDeveloperMarker = purchaseHistory.some(
+    (entry) => entry?.source === 'local-dev' || entry?.kind === 'developer_profile'
+  );
+
+  return (
+    hasDeveloperMarker ||
+    (hasDevBalance && hasAllSkins && hasAllWeapons && hasAllVehicles && hasAllCombos)
+  );
+}
+
+export function activateDeveloperProfile() {
+  if (!isDeveloperProfileActive()) {
+    writeJSON(DEV_KEYS.backup, exportLocalSave());
+  }
+
+  setDeveloperProfileActive(true);
+  importLocalSave({
+    coins: DEV_BALANCE,
+    diamonds: DEV_BALANCE,
+    ownedSkins: getAllSkinIds(),
+    selectedSkin: 'default',
+    highScore: 0,
+    totalKills: 0,
+    ownedWeapons: getAllWeaponIds(),
+    selectedWeapon: 'blaster',
+    ownedUpgrades: getAllUpgradeInventory(),
+    equippedUpgrades: {},
+    ownedSpecials: getAllSpecialInventory(),
+    selectedSpecial: '',
+    equippedSpecials: {},
+    ownedCombos: getAllComboIds(),
+    comboAccess: {},
+    ownedVehicles: getAllVehicleIds(),
+    selectedVehicle: 'default_jet',
+    purchaseHistory: [
+      {
+        ts: nowTs(),
+        source: 'local-dev',
+        kind: 'developer_profile',
+        note: 'Developer profile activated',
+      },
+    ],
+  });
+}
+
+export function deactivateDeveloperProfile() {
+  const backup = readJSON(DEV_KEYS.backup, null);
+  setDeveloperProfileActive(false);
+
+  if (backup && typeof backup === 'object' && !saveLooksLikeDeveloperProfile(backup)) {
+    importLocalSave(backup);
+  } else {
+    importLocalSave(buildFreshLocalSave());
+  }
+
+  localStorage.removeItem(DEV_KEYS.backup);
+}
+
 // ───────────────────────────────────────────────────────────────────────────────
 // Coins
 // ───────────────────────────────────────────────────────────────────────────────
 
 export function getCoins() {
+  if (isDeveloperProfileActive()) return DEV_BALANCE;
   return clampInt(localStorage.getItem(KEYS.coins), 0);
 }
 
 export function setCoins(amount) {
+  if (isDeveloperProfileActive()) return DEV_BALANCE;
   const safe = Math.max(0, clampInt(amount, 0));
   localStorage.setItem(KEYS.coins, String(safe));
   return safe;
 }
 
 export function addCoins(amount) {
+  if (isDeveloperProfileActive()) return DEV_BALANCE;
   const next = Math.max(0, getCoins() + clampInt(amount, 0));
   localStorage.setItem(KEYS.coins, String(next));
   return next;
 }
 
 export function spendCoins(amount) {
+  if (isDeveloperProfileActive()) return true;
   const cost = Math.max(0, clampInt(amount, 0));
   const current = getCoins();
   if (current < cost) return false;
@@ -104,26 +248,31 @@ export function spendCoins(amount) {
 }
 
 export function canAfford(amount) {
+  if (isDeveloperProfileActive()) return true;
   return getCoins() >= Math.max(0, clampInt(amount, 0));
 }
 
 export function getDiamonds() {
+  if (isDeveloperProfileActive()) return DEV_BALANCE;
   return clampInt(localStorage.getItem(KEYS.diamonds), 0);
 }
 
 export function setDiamonds(amount) {
+  if (isDeveloperProfileActive()) return DEV_BALANCE;
   const safe = Math.max(0, clampInt(amount, 0));
   localStorage.setItem(KEYS.diamonds, String(safe));
   return safe;
 }
 
 export function addDiamonds(amount) {
+  if (isDeveloperProfileActive()) return DEV_BALANCE;
   const next = Math.max(0, getDiamonds() + clampInt(amount, 0));
   localStorage.setItem(KEYS.diamonds, String(next));
   return next;
 }
 
 export function spendDiamonds(amount) {
+  if (isDeveloperProfileActive()) return true;
   const cost = Math.max(0, clampInt(amount, 0));
   const current = getDiamonds();
 
@@ -134,6 +283,7 @@ export function spendDiamonds(amount) {
 }
 
 export function canAffordDiamonds(amount) {
+  if (isDeveloperProfileActive()) return true;
   return getDiamonds() >= Math.max(0, clampInt(amount, 0));
 }
 
@@ -142,6 +292,7 @@ export function canAffordDiamonds(amount) {
 // ───────────────────────────────────────────────────────────────────────────────
 
 export function getOwnedSkins() {
+  if (isDeveloperProfileActive()) return getAllSkinIds();
   const owned = readJSON(KEYS.owned, ['default']);
   return Array.isArray(owned) && owned.length ? owned : ['default'];
 }
@@ -202,6 +353,7 @@ export function addKills(n) {
 // ───────────────────────────────────────────────────────────────────────────────
 
 export function getOwnedWeapons() {
+  if (isDeveloperProfileActive()) return getAllWeaponIds();
   const owned = readJSON(KEYS.ownedWeapons, ['blaster']);
   return Array.isArray(owned) && owned.length ? owned : ['blaster'];
 }
@@ -235,6 +387,7 @@ export function setSelectedWeapon(id) {
 // ───────────────────────────────────────────────────────────────────────────────
 
 export function getUpgradeInventory() {
+  if (isDeveloperProfileActive()) return getAllUpgradeInventory();
   return sanitizeObject(readJSON(KEYS.ownedUpgrades, {}));
 }
 
@@ -334,6 +487,7 @@ export function consumeEquippedUpgrade(id, qty = 1) {
 // ───────────────────────────────────────────────────────────────────────────────
 
 export function getSpecialInventory() {
+  if (isDeveloperProfileActive()) return getAllSpecialInventory();
   return sanitizeObject(readJSON(KEYS.ownedSpecials, {}));
 }
 
@@ -444,6 +598,7 @@ export function unequipSpecial(id, qty = 1) {
 // ───────────────────────────────────────────────────────────────────────────────
 
 export function getOwnedCombos() {
+  if (isDeveloperProfileActive()) return getAllComboIds();
   const owned = readJSON(KEYS.ownedCombos, []);
   return sanitizeArray(owned, []);
 }
@@ -621,6 +776,7 @@ export function clearComboRental(id) {
 // ───────────────────────────────────────────────────────────────────────────────
 
 export function getOwnedVehicles() {
+  if (isDeveloperProfileActive()) return getAllVehicleIds();
   const owned = readJSON(KEYS.ownedVehicles, ['default_jet']);
   return Array.isArray(owned) && owned.length ? owned : ['default_jet'];
 }
@@ -841,6 +997,7 @@ export function processGameOver(score, kills) {
 export function exportLocalSave() {
   return {
     coins: getCoins(),
+    diamonds: getDiamonds(),
 
     ownedSkins: getOwnedSkins(),
     selectedSkin: getSelectedSkin(),
@@ -872,6 +1029,7 @@ export function importLocalSave(save) {
   if (!save || typeof save !== 'object') return;
 
   localStorage.setItem(KEYS.coins, String(clampInt(save.coins, 0)));
+  localStorage.setItem(KEYS.diamonds, String(clampInt(save.diamonds, 0)));
 
   writeJSON(KEYS.owned, Array.isArray(save.ownedSkins) ? save.ownedSkins : ['default']);
   localStorage.setItem(KEYS.selected, save.selectedSkin ?? 'default');
@@ -912,6 +1070,8 @@ export function importLocalSave(save) {
 // ───────────────────────────────────────────────────────────────────────────────
 
 export function resetEconomyProgress() {
+  localStorage.removeItem(DEV_KEYS.enabled);
+  localStorage.removeItem(DEV_KEYS.backup);
   localStorage.removeItem(KEYS.coins);
 
   localStorage.removeItem(KEYS.owned);

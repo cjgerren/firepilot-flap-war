@@ -1,7 +1,49 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
-import { supabase } from '@/api/supabaseClient';
+import { supabase, hasSupabaseConfig } from '@/api/supabaseClient';
+import { activateDeveloperProfile, deactivateDeveloperProfile } from '@/lib/gameStore';
 
 const AuthContext = createContext();
+const DEV_USER_KEY = 'fp_dev_user';
+const DEV_LOGIN_EMAIL = 'dev@firepilot.local';
+const isDeveloperLoginEnabled = import.meta.env.VITE_ENABLE_DEV_LOGIN === 'true';
+
+function getStoredDeveloperUser() {
+  if (!isDeveloperLoginEnabled) {
+    localStorage.removeItem(DEV_USER_KEY);
+    return null;
+  }
+
+  try {
+    const raw = localStorage.getItem(DEV_USER_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function storeDeveloperUser(user) {
+  localStorage.setItem(DEV_USER_KEY, JSON.stringify(user));
+}
+
+function clearStoredDeveloperUser() {
+  localStorage.removeItem(DEV_USER_KEY);
+}
+
+function clearDeveloperSession() {
+  clearStoredDeveloperUser();
+  deactivateDeveloperProfile();
+}
+
+function buildDeveloperUser() {
+  return {
+    id: 'local-dev-firepilot',
+    email: DEV_LOGIN_EMAIL,
+    role: 'developer',
+    isLocalDeveloper: true,
+  };
+}
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -18,6 +60,27 @@ export const AuthProvider = ({ children }) => {
       setIsLoadingAuth(true);
       setAuthError(null);
 
+      const localDeveloperUser = getStoredDeveloperUser();
+
+      if (!hasSupabaseConfig || !supabase) {
+        if (localDeveloperUser) {
+          activateDeveloperProfile();
+          if (mounted) {
+            setUser(localDeveloperUser);
+            setIsAuthenticated(true);
+            setIsLoadingAuth(false);
+          }
+          return;
+        }
+
+        if (mounted) {
+          setUser(null);
+          setIsAuthenticated(false);
+          setIsLoadingAuth(false);
+        }
+        return;
+      }
+
       try {
         const { data, error } = await supabase.auth.getSession();
 
@@ -29,6 +92,14 @@ export const AuthProvider = ({ children }) => {
           setIsAuthenticated(false);
         } else {
           const currentUser = data?.session?.user ?? null;
+          if (currentUser) {
+            clearDeveloperSession();
+          } else if (localDeveloperUser) {
+            activateDeveloperProfile();
+            setUser(localDeveloperUser);
+            setIsAuthenticated(true);
+            return;
+          }
           setUser(currentUser);
           setIsAuthenticated(!!currentUser);
         }
@@ -46,11 +117,20 @@ export const AuthProvider = ({ children }) => {
 
     initAuth();
 
+    if (!hasSupabaseConfig || !supabase) {
+      return () => {
+        mounted = false;
+      };
+    }
+
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!mounted) return;
       const currentUser = session?.user ?? null;
+      if (currentUser) {
+        clearDeveloperSession();
+      }
       setUser(currentUser);
       setIsAuthenticated(!!currentUser);
       setIsLoadingAuth(false);
@@ -64,6 +144,12 @@ export const AuthProvider = ({ children }) => {
 
   const checkAppState = async () => {
     setAuthError(null);
+
+    if (!hasSupabaseConfig || !supabase) {
+      setUser(null);
+      setIsAuthenticated(false);
+      return;
+    }
 
     try {
       const { data, error } = await supabase.auth.getSession();
@@ -88,6 +174,15 @@ export const AuthProvider = ({ children }) => {
   const login = async (email, password) => {
     setAuthError(null);
 
+    if (!hasSupabaseConfig || !supabase) {
+      const error = new Error('Supabase auth is not configured for this installation.');
+      setAuthError({
+        type: 'config_error',
+        message: error.message,
+      });
+      throw error;
+    }
+
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
@@ -102,6 +197,9 @@ export const AuthProvider = ({ children }) => {
     }
 
     const currentUser = data?.user ?? null;
+    if (currentUser) {
+      clearDeveloperSession();
+    }
     setUser(currentUser);
     setIsAuthenticated(!!currentUser);
     return data;
@@ -109,6 +207,15 @@ export const AuthProvider = ({ children }) => {
 
   const register = async (email, password) => {
     setAuthError(null);
+
+    if (!hasSupabaseConfig || !supabase) {
+      const error = new Error('Supabase auth is not configured for this installation.');
+      setAuthError({
+        type: 'config_error',
+        message: error.message,
+      });
+      throw error;
+    }
 
     const { data, error } = await supabase.auth.signUp({
       email,
@@ -124,12 +231,33 @@ export const AuthProvider = ({ children }) => {
     }
 
     const currentUser = data?.user ?? null;
+    if (currentUser) {
+      clearDeveloperSession();
+    }
     setUser(currentUser);
     setIsAuthenticated(!!currentUser);
     return data;
   };
 
   const logout = async () => {
+    const hadDeveloperSession = Boolean(getStoredDeveloperUser());
+
+    if (hadDeveloperSession) {
+      clearDeveloperSession();
+    }
+
+    if (user?.isLocalDeveloper) {
+      setUser(null);
+      setIsAuthenticated(false);
+      return;
+    }
+
+    if (!hasSupabaseConfig || !supabase) {
+      setUser(null);
+      setIsAuthenticated(false);
+      return;
+    }
+
     const { error } = await supabase.auth.signOut();
 
     if (error) {
@@ -141,8 +269,35 @@ export const AuthProvider = ({ children }) => {
     setIsAuthenticated(false);
   };
 
-  const navigateToLogin = () => {
-    window.location.href = '/login';
+  const navigateToLogin = (nextPath = '/', mode = 'login') => {
+    const encodedNext = encodeURIComponent(nextPath || '/');
+    const encodedMode = encodeURIComponent(mode || 'login');
+    window.location.href = `/login?next=${encodedNext}&mode=${encodedMode}`;
+  };
+
+  const loginAsDeveloper = async () => {
+    if (!isDeveloperLoginEnabled) {
+      throw new Error('Local developer access is disabled for this build.');
+    }
+
+    const developerUser = buildDeveloperUser();
+    activateDeveloperProfile();
+    storeDeveloperUser(developerUser);
+    setUser(developerUser);
+    setIsAuthenticated(true);
+    setAuthError(null);
+    return developerUser;
+  };
+
+  const clearLocalDeveloperState = async () => {
+    const wasDeveloperUser = user?.isLocalDeveloper || Boolean(getStoredDeveloperUser());
+
+    clearDeveloperSession();
+
+    if (wasDeveloperUser) {
+      setUser(null);
+      setIsAuthenticated(false);
+    }
   };
 
   return (
@@ -154,9 +309,13 @@ export const AuthProvider = ({ children }) => {
         isLoadingPublicSettings,
         authError,
         appPublicSettings,
+        hasSupabaseConfig,
+        isDeveloperLoginEnabled,
         login,
         register,
         logout,
+        loginAsDeveloper,
+        clearLocalDeveloperState,
         navigateToLogin,
         checkAppState,
       }}

@@ -54,8 +54,9 @@ function MobileBtn({
         minWidth: 58,
         minHeight: 58,
         border: `1px solid ${border}`,
-        background: bg,
-        boxShadow: `0 0 18px ${color}33`,
+        background: `linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02)), ${bg}`,
+        boxShadow: `0 16px 28px rgba(0,0,0,0.28), 0 0 18px ${color}33`,
+        backdropFilter: 'blur(10px)',
         ...style,
       }}
     >
@@ -183,11 +184,17 @@ export default function Game() {
   }, [user]);
 
   useEffect(() => {
+    if (gameState === 'idle') {
+      audioManager.playMusic('menuTheme');
+      return;
+    }
+
     if (gameState === 'playing') {
       audioManager.playMusic('gameTheme');
-    } else {
-      audioManager.playMusic('menuTheme');
+      return;
     }
+
+    audioManager.stopAllMusic();
   }, [gameState]);
 
   useEffect(() => {
@@ -258,6 +265,7 @@ export default function Game() {
     setLocalCoins(getCoins());
     setGameState('gameover');
 
+    audioManager.stopAllMusic();
     audioManager.playSfx('gameOver');
 
     try {
@@ -281,10 +289,24 @@ export default function Game() {
 
   const isPlaying = gameState === 'playing';
   const specialCount = (blastReady ? 1 : 0) + (tunnelBombReady ? 1 : 0);
+  const shellBackground =
+    'radial-gradient(circle at top, rgba(127,198,238,0.18), rgba(0,0,0,0) 30%), radial-gradient(circle at 80% 18%, rgba(255,174,128,0.12), rgba(0,0,0,0) 22%), linear-gradient(180deg, #09131b 0%, #081019 38%, #05080c 100%)';
 
   return (
-    <div className="min-h-screen bg-background flex flex-col items-center justify-center p-2 select-none">
-      <div className="relative w-full" style={{ maxWidth: 800 }}>
+    <div
+      className="min-h-screen flex flex-col items-center justify-center p-2 md:p-4 select-none overflow-hidden"
+      style={{ background: shellBackground }}
+    >
+      <div
+        className="relative w-full rounded-[34px] p-2 md:p-3"
+        style={{
+          maxWidth: 860,
+          background:
+            'linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.01))',
+          border: '1px solid rgba(175,225,255,0.12)',
+          boxShadow: '0 32px 80px rgba(0,0,0,0.42)',
+        }}
+      >
         <GameCanvas
           gameState={gameState}
           score={score}
@@ -297,8 +319,8 @@ export default function Game() {
           shootRef={shootRef}
           blastRef={blastRef}
           tunnelBombRef={tunnelBombRef}
-          startFireRef={startFireRef}
-          stopFireRef={stopFireRef}
+          shootStartRef={startFireRef}
+          shootStopRef={stopFireRef}
         />
 
         <MainMenu
@@ -372,8 +394,11 @@ export default function Game() {
         )}
       </div>
 
-      <p className="mt-2 font-mono text-xs" style={{ color: 'hsla(180,100%,50%,0.2)' }}>
-        FIREPILOT: FLAP WAR v1.0
+      <p
+        className="mt-3 font-mono text-xs tracking-[0.22em]"
+        style={{ color: 'rgba(190,220,235,0.32)' }}
+      >
+        FIREPILOT TUNNEL RUN // FUTURE STRIKE BUILD
       </p>
 
       <style>{`

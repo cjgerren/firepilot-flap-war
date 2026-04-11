@@ -451,7 +451,7 @@ export const UPGRADES = [
   {
     id: 'shield1',
     name: 'SHIELD MK-I',
-    desc: 'Absorbs 1 hit from pipes or borders. Consumable — equip before each run.',
+    desc: 'Absorbs 1 hit from tunnel walls or borders. Consumable — equip before each run.',
     emoji: '🛡️',
     rarity: 'starter',
     tier: 'starter',
