@@ -309,7 +309,7 @@ export default function MainMenu({
     if (intent.currencyType === 'coins') setShowCoinShop(true);
     if (intent.currencyType === 'diamonds') setShowDiamondShop(true);
 
-    if (authenticatedUser?.isLocalDeveloper) {
+    if (authenticatedUser?.isLocalDeveloper || authenticatedUser?.isMasterUser) {
       return;
     }
 
@@ -536,6 +536,12 @@ export default function MainMenu({
       return;
     }
 
+    if (user.isMasterUser) {
+      alert('Master account already has unlimited coins.');
+      refreshCurrencies();
+      return;
+    }
+
     if (!hasSupabaseConfig) {
       alert('Checkout is disabled because Supabase auth is not configured for this build.');
       return;
@@ -557,6 +563,12 @@ export default function MainMenu({
 
     if (!user?.id) {
       openAuthModal('login', { currencyType: 'diamonds', pack });
+      return;
+    }
+
+    if (user.isMasterUser) {
+      alert('Master account already has unlimited diamonds.');
+      refreshCurrencies();
       return;
     }
 
@@ -1908,6 +1920,7 @@ export default function MainMenu({
                   }}
                 >
                   {user.email || user.id}
+                  {user.isMasterUser ? ' // MASTER' : ''}
                 </div>
                 <button
                   onClick={handleLogout}
@@ -2394,6 +2407,7 @@ export default function MainMenu({
                     }}
                   >
                     {user.email || user.id}
+                    {user.isMasterUser ? ' // MASTER' : ''}
                   </div>
                   <button
                     onClick={handleLogout}

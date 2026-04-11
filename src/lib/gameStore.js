@@ -203,6 +203,10 @@ export function activateDeveloperProfile() {
 }
 
 export function deactivateDeveloperProfile() {
+  if (!isDeveloperProfileActive() && !localStorage.getItem(DEV_KEYS.backup)) {
+    return;
+  }
+
   const backup = readJSON(DEV_KEYS.backup, null);
   setDeveloperProfileActive(false);
 

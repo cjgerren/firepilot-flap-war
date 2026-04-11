@@ -6,6 +6,34 @@ const AuthContext = createContext();
 const DEV_USER_KEY = 'fp_dev_user';
 const DEV_LOGIN_EMAIL = 'dev@firepilot.local';
 const isDeveloperLoginEnabled = import.meta.env.VITE_ENABLE_DEV_LOGIN === 'true';
+const MASTER_EMAILS = (import.meta.env.VITE_MASTER_EMAILS || '')
+  .split(',')
+  .map((email) => email.trim().toLowerCase())
+  .filter(Boolean);
+
+function isMasterAccount(user) {
+  const email = user?.email?.trim().toLowerCase();
+  return Boolean(email && MASTER_EMAILS.includes(email));
+}
+
+function applyAccountAccess(user) {
+  if (!user) {
+    deactivateDeveloperProfile();
+    return null;
+  }
+
+  if (isMasterAccount(user)) {
+    activateDeveloperProfile();
+    return {
+      ...user,
+      role: user.role || 'master',
+      isMasterUser: true,
+    };
+  }
+
+  clearDeveloperSession();
+  return user;
+}
 
 function getStoredDeveloperUser() {
   if (!isDeveloperLoginEnabled) {
@@ -93,15 +121,19 @@ export const AuthProvider = ({ children }) => {
         } else {
           const currentUser = data?.session?.user ?? null;
           if (currentUser) {
-            clearDeveloperSession();
+            const accountUser = applyAccountAccess(currentUser);
+            setUser(accountUser);
+            setIsAuthenticated(!!accountUser);
           } else if (localDeveloperUser) {
             activateDeveloperProfile();
             setUser(localDeveloperUser);
             setIsAuthenticated(true);
             return;
+          } else {
+            clearDeveloperSession();
+            setUser(null);
+            setIsAuthenticated(false);
           }
-          setUser(currentUser);
-          setIsAuthenticated(!!currentUser);
         }
       } catch (error) {
         if (!mounted) return;
@@ -128,11 +160,9 @@ export const AuthProvider = ({ children }) => {
     } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!mounted) return;
       const currentUser = session?.user ?? null;
-      if (currentUser) {
-        clearDeveloperSession();
-      }
-      setUser(currentUser);
-      setIsAuthenticated(!!currentUser);
+      const accountUser = applyAccountAccess(currentUser);
+      setUser(accountUser);
+      setIsAuthenticated(!!accountUser);
       setIsLoadingAuth(false);
     });
 
@@ -162,8 +192,9 @@ export const AuthProvider = ({ children }) => {
       }
 
       const currentUser = data?.session?.user ?? null;
-      setUser(currentUser);
-      setIsAuthenticated(!!currentUser);
+      const accountUser = applyAccountAccess(currentUser);
+      setUser(accountUser);
+      setIsAuthenticated(!!accountUser);
     } catch (error) {
       console.error('Unexpected checkAppState error:', error);
       setUser(null);
@@ -196,13 +227,10 @@ export const AuthProvider = ({ children }) => {
       throw error;
     }
 
-    const currentUser = data?.user ?? null;
-    if (currentUser) {
-      clearDeveloperSession();
-    }
+    const currentUser = applyAccountAccess(data?.user ?? null);
     setUser(currentUser);
     setIsAuthenticated(!!currentUser);
-    return data;
+    return { ...data, user: currentUser };
   };
 
   const register = async (email, password) => {
@@ -230,13 +258,10 @@ export const AuthProvider = ({ children }) => {
       throw error;
     }
 
-    const currentUser = data?.user ?? null;
-    if (currentUser) {
-      clearDeveloperSession();
-    }
+    const currentUser = applyAccountAccess(data?.user ?? null);
     setUser(currentUser);
     setIsAuthenticated(!!currentUser);
-    return data;
+    return { ...data, user: currentUser };
   };
 
   const logout = async () => {
@@ -263,6 +288,10 @@ export const AuthProvider = ({ children }) => {
     if (error) {
       console.error('Logout failed:', error);
       throw error;
+    }
+
+    if (user?.isMasterUser) {
+      deactivateDeveloperProfile();
     }
 
     setUser(null);
@@ -311,6 +340,7 @@ export const AuthProvider = ({ children }) => {
         appPublicSettings,
         hasSupabaseConfig,
         isDeveloperLoginEnabled,
+        isMasterAccountConfigured: MASTER_EMAILS.length > 0,
         login,
         register,
         logout,
