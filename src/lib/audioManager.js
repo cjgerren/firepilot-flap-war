@@ -50,7 +50,7 @@ class AudioManager {
     this.sfx.explosion = this.createAudio('/audio/sfx/explosion.wav', false);
     this.sfx.gameOver = this.createAudio('/audio/sfx/game-over.wav', false);
     this.sfx.shield = this.createAudio('/audio/sfx/shield.wav', false);
-    this.sfx.powerup = this.createAudio('/audio/sfx/powerup.wav', false);
+    this.sfx.powerup = this.createAudio('/audio/sfx/power-up.wav', false);
 
     this.applyVolumes();
   }

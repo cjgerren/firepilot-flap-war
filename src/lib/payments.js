@@ -104,6 +104,7 @@ export function formatUsdFromCents(amount) {
 }
 
 let nativePurchasesUserId = null;
+const PRODUCTION_API_BASE_URL = 'https://firepilot-flap-war-production.up.railway.app/api';
 
 function isNativeStoreBuild() {
   return Capacitor.isNativePlatform();
@@ -146,7 +147,7 @@ function getApiBaseUrl() {
     return 'http://127.0.0.1:3000/api';
   }
 
-  return `${origin}/api`;
+  return PRODUCTION_API_BASE_URL;
 }
 
 async function createCheckout(pack, userId, currencyType) {
