@@ -2784,140 +2784,6 @@ export default function MainMenu({
           />
         </div>
 
-        <div className="relative grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
-          <div
-            className="rounded-2xl p-4 min-w-0"
-            style={{
-              background: 'rgba(125,227,255,0.05)',
-              border: '1px solid rgba(125,227,255,0.2)',
-            }}
-          >
-            <p
-              className="font-mono text-xs font-bold mb-2"
-              style={{ color: '#7de3ff' }}
-            >
-              DAILY MISSIONS
-            </p>
-
-            <div className="space-y-2">
-              {dailyMissions.map((mission) => {
-                const target = Math.max(1, Number(mission.target || 1));
-                const progress = Math.max(0, Number(mission.progress || 0));
-                const progressPct = Math.max(0, Math.min(100, Math.round((progress / target) * 100)));
-                const canClaim = mission.completed && !mission.claimed;
-
-                return (
-                  <div
-                    key={mission.id}
-                    className="rounded-xl p-3"
-                    style={{
-                      background: 'rgba(255,255,255,0.03)',
-                      border: '1px solid rgba(255,255,255,0.08)',
-                    }}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <div>
-                        <p className="font-mono text-[11px]" style={{ color: '#dff4ff' }}>
-                          {mission.title}
-                        </p>
-                        <p className="font-mono text-[10px]" style={{ color: 'rgba(220,235,245,0.62)' }}>
-                          {mission.description}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-mono text-[10px]" style={{ color: '#ffc785' }}>
-                          +{mission.reward} ⚡
-                        </p>
-                        {mission.claimed ? (
-                          <span className="font-mono text-[10px]" style={{ color: '#7de3ff' }}>
-                            CLAIMED
-                          </span>
-                        ) : mission.completed ? (
-                          <button
-                            onClick={() => handleClaimMission(mission.id)}
-                            className="px-2 py-1 rounded-lg font-mono text-[10px]"
-                            style={{
-                              background: 'rgba(125,227,255,0.14)',
-                              border: '1px solid rgba(125,227,255,0.34)',
-                              color: '#7de3ff',
-                            }}
-                          >
-                            CLAIM
-                          </button>
-                        ) : (
-                          <span className="font-mono text-[10px]" style={{ color: 'rgba(220,235,245,0.5)' }}>
-                            IN PROGRESS
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    <div
-                      className="mt-2 h-1.5 rounded-full overflow-hidden"
-                      style={{ background: 'rgba(255,255,255,0.08)' }}
-                    >
-                      <div
-                        style={{
-                          width: `${progressPct}%`,
-                          height: '100%',
-                          background: mission.claimed ? '#7de3ff' : mission.completed ? '#00ffaa' : '#ffc785',
-                        }}
-                      />
-                    </div>
-                    <p className="mt-1 font-mono text-[10px]" style={{ color: 'rgba(220,235,245,0.62)' }}>
-                      {Math.min(progress, target)} / {target}
-                    </p>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          <div
-            className="rounded-2xl p-4 min-w-0"
-            style={{
-              background: 'rgba(255,199,133,0.05)',
-              border: '1px solid rgba(255,199,133,0.2)',
-            }}
-          >
-            <p
-              className="font-mono text-xs font-bold mb-2"
-              style={{ color: '#ffc785' }}
-            >
-              MILESTONE BADGES
-            </p>
-            <p className="font-mono text-[10px] mb-3" style={{ color: 'rgba(220,235,245,0.62)' }}>
-              Earn badges by hitting score milestones in a run.
-            </p>
-
-            {recentBadges.length === 0 ? (
-              <p className="font-mono text-[11px]" style={{ color: 'rgba(220,235,245,0.6)' }}>
-                No badges yet. Reach score 50 to unlock your first wings badge.
-              </p>
-            ) : (
-              <div className="flex flex-wrap gap-2">
-                {recentBadges.map((badge) => (
-                  <div
-                    key={badge.id}
-                    className="px-2.5 py-1.5 rounded-lg"
-                    style={{
-                      background: 'rgba(255,199,133,0.12)',
-                      border: '1px solid rgba(255,199,133,0.26)',
-                    }}
-                  >
-                    <p className="font-mono text-[10px]" style={{ color: '#ffd7ad' }}>
-                      {badge.name}
-                    </p>
-                    <p className="font-mono text-[10px]" style={{ color: 'rgba(255,240,220,0.72)' }}>
-                      Score {badge.score}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-
         <div className="relative grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
           <MenuActionButton
             onClick={onStart}
@@ -3054,6 +2920,139 @@ export default function MainMenu({
             </p>
           </div>
         </div>
+
+        <div className="relative grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
+          <div
+            className="rounded-2xl p-4 min-w-0"
+            style={{
+              background: 'rgba(125,227,255,0.05)',
+              border: '1px solid rgba(125,227,255,0.2)',
+            }}
+          >
+            <p
+              className="font-mono text-xs font-bold mb-2"
+              style={{ color: '#7de3ff' }}
+            >
+              DAILY MISSIONS
+            </p>
+
+            <div className="space-y-2">
+              {dailyMissions.map((mission) => {
+                const target = Math.max(1, Number(mission.target || 1));
+                const progress = Math.max(0, Number(mission.progress || 0));
+                const progressPct = Math.max(0, Math.min(100, Math.round((progress / target) * 100)));
+
+                return (
+                  <div
+                    key={mission.id}
+                    className="rounded-xl p-3"
+                    style={{
+                      background: 'rgba(255,255,255,0.03)',
+                      border: '1px solid rgba(255,255,255,0.08)',
+                    }}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <p className="font-mono text-[11px]" style={{ color: '#dff4ff' }}>
+                          {mission.title}
+                        </p>
+                        <p className="font-mono text-[10px]" style={{ color: 'rgba(220,235,245,0.62)' }}>
+                          {mission.description}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-mono text-[10px]" style={{ color: '#ffc785' }}>
+                          +{mission.reward} ⚡
+                        </p>
+                        {mission.claimed ? (
+                          <span className="font-mono text-[10px]" style={{ color: '#7de3ff' }}>
+                            CLAIMED
+                          </span>
+                        ) : mission.completed ? (
+                          <button
+                            onClick={() => handleClaimMission(mission.id)}
+                            className="px-2 py-1 rounded-lg font-mono text-[10px]"
+                            style={{
+                              background: 'rgba(125,227,255,0.14)',
+                              border: '1px solid rgba(125,227,255,0.34)',
+                              color: '#7de3ff',
+                            }}
+                          >
+                            CLAIM
+                          </button>
+                        ) : (
+                          <span className="font-mono text-[10px]" style={{ color: 'rgba(220,235,245,0.5)' }}>
+                            IN PROGRESS
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div
+                      className="mt-2 h-1.5 rounded-full overflow-hidden"
+                      style={{ background: 'rgba(255,255,255,0.08)' }}
+                    >
+                      <div
+                        style={{
+                          width: `${progressPct}%`,
+                          height: '100%',
+                          background: mission.claimed ? '#7de3ff' : mission.completed ? '#00ffaa' : '#ffc785',
+                        }}
+                      />
+                    </div>
+                    <p className="mt-1 font-mono text-[10px]" style={{ color: 'rgba(220,235,245,0.62)' }}>
+                      {Math.min(progress, target)} / {target}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div
+            className="rounded-2xl p-4 min-w-0"
+            style={{
+              background: 'rgba(255,199,133,0.05)',
+              border: '1px solid rgba(255,199,133,0.2)',
+            }}
+          >
+            <p
+              className="font-mono text-xs font-bold mb-2"
+              style={{ color: '#ffc785' }}
+            >
+              MILESTONE BADGES
+            </p>
+            <p className="font-mono text-[10px] mb-3" style={{ color: 'rgba(220,235,245,0.62)' }}>
+              Earn badges by hitting score milestones in a run.
+            </p>
+
+            {recentBadges.length === 0 ? (
+              <p className="font-mono text-[11px]" style={{ color: 'rgba(220,235,245,0.6)' }}>
+                No badges yet. Reach score 50 to unlock your first wings badge.
+              </p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {recentBadges.map((badge) => (
+                  <div
+                    key={badge.id}
+                    className="px-2.5 py-1.5 rounded-lg"
+                    style={{
+                      background: 'rgba(255,199,133,0.12)',
+                      border: '1px solid rgba(255,199,133,0.26)',
+                    }}
+                  >
+                    <p className="font-mono text-[10px]" style={{ color: '#ffd7ad' }}>
+                      {badge.name}
+                    </p>
+                    <p className="font-mono text-[10px]" style={{ color: 'rgba(255,240,220,0.72)' }}>
+                      Score {badge.score}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       </motion.div>
     </div>
   );
@@ -3081,7 +3080,7 @@ export default function MainMenu({
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className={`absolute inset-0 overflow-x-hidden ${isMobileDevice ? 'overflow-y-auto' : 'overflow-y-hidden'}`}
+        className="absolute inset-0 overflow-y-auto overflow-x-hidden no-scrollbar"
         style={{
           zIndex: 999999,
           background:
