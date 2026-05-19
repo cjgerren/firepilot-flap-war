@@ -1,0 +1,80 @@
+{
+  "configVersion": 1,
+  "metadata": {
+    "title": "FirePilot Mainline",
+    "notes": "Baseline configuration for local and release builds.",
+    "updatedAt": null
+  },
+  "gameplay": {
+    "scoreRampMultiplier": 1,
+    "playerHp": 3,
+    "enemySpawnBaseInterval": 170
+  },
+  "enemies": {
+    "enabledTypes": [
+      "drone",
+      "enemy_ship",
+      "ground_turret"
+    ],
+    "weights": {
+      "drone": 0.58,
+      "enemy_ship": 0.28,
+      "ground_turret": 0.14
+    },
+    "healthMultiplier": 1,
+    "speedMultiplier": 1,
+    "customEnemies": []
+  },
+  "armory": {
+    "allowNewWeapons": true,
+    "starterWeapons": [
+      "blaster"
+    ],
+    "featuredWeapons": [
+      "blaster2",
+      "rocket",
+      "auto",
+      "lightning"
+    ],
+    "featuredSkins": [
+      "default"
+    ],
+    "featuredUpgrades": [
+      "damage_boost",
+      "rapid_fire"
+    ],
+    "featuredSpecials": [
+      "teleport_blink",
+      "sonic_boom"
+    ],
+    "featuredCombos": [
+      "shock-and-awe",
+      "bombardier"
+    ]
+  },
+  "audio": {
+    "musicEnabledByDefault": true,
+    "musicVolume": 0.6,
+    "sfxEnabledByDefault": true,
+    "sfxVolume": 0.8
+  },
+  "visuals": {
+    "theme": "classic",
+    "hudStyle": "retro-neon",
+    "particlesMultiplier": 1
+  },
+  "platforms": {
+    "web": {
+      "enabled": true,
+      "multiplayerEnabled": true
+    },
+    "android": {
+      "enabled": true,
+      "multiplayerEnabled": true
+    },
+    "ios": {
+      "enabled": true,
+      "multiplayerEnabled": false
+    }
+  }
+}

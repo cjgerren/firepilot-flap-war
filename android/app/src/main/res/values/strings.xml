@@ -1,0 +1,9 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">FirePilot Flap War</string>
+    <string name="title_activity_main">FirePilot Flap War</string>
+    <string name="package_name">com.cjgerren.firepilottunnelrun</string>
+    <string name="custom_url_scheme">com.cjgerren.firepilottunnelrun</string>
+    <string name="admob_app_id">ca-app-pub-8043359632710183~5953445119</string>
+    <string name="admob_rewarded_revive_unit_id">ca-app-pub-8043359632710183/6364508652</string>
+</resources>
