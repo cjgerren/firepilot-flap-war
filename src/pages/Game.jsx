@@ -890,7 +890,7 @@ export default function Game() {
   return (
     <div
       className={`min-h-screen flex flex-col items-center select-none ${
-        mobileFullLayout ? 'justify-start p-0' : 'justify-center p-2 md:p-4'
+        mobileFullLayout ? 'justify-start p-0' : 'justify-center p-1 md:p-2'
       }`}
       style={{
         background: shellBackground,
@@ -901,7 +901,7 @@ export default function Game() {
       <div
         className={`relative w-full ${mobileFullLayout ? 'rounded-none p-0' : 'rounded-[34px] p-2 md:p-3'}`}
         style={{
-          maxWidth: mobileFullLayout ? '100%' : 860,
+          maxWidth: mobileFullLayout ? '100%' : 'min(1480px, calc(100vw - 12px))',
           height:
             mobileFullLayout && mobileViewportHeight
               ? `${mobileViewportHeight}px`

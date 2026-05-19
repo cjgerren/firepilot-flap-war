@@ -2557,7 +2557,7 @@ export default function MainMenu({
       className={
         isMobileDevice
           ? 'w-full min-h-full h-full flex items-stretch justify-center px-0 py-0'
-          : 'w-full min-h-full flex items-start md:items-center justify-center px-4 py-16 md:px-6 md:py-6'
+          : 'w-full h-full flex items-center justify-center px-3 md:px-4 py-3'
       }
     >
       <motion.div
@@ -2567,7 +2567,7 @@ export default function MainMenu({
         className={
           isMobileDevice
             ? 'w-full h-full max-w-none max-h-none rounded-none p-3 relative overflow-y-auto overflow-x-hidden'
-            : 'w-full max-w-[860px] max-h-[calc(100vh-2rem)] rounded-[32px] p-4 md:p-6 relative overflow-y-auto overflow-x-hidden'
+            : 'w-full max-w-[1320px] h-full rounded-[32px] p-4 md:p-6 relative overflow-hidden'
         }
         style={
           isMobileDevice
@@ -3081,7 +3081,7 @@ export default function MainMenu({
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="absolute inset-0 overflow-y-auto overflow-x-hidden"
+        className={`absolute inset-0 overflow-x-hidden ${isMobileDevice ? 'overflow-y-auto' : 'overflow-y-hidden'}`}
         style={{
           zIndex: 999999,
           background:
