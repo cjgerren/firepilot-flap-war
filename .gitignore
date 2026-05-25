@@ -20,6 +20,8 @@ android/app/release/
 android/app/build/outputs/
 
 coverage/
+playwright-report/
+test-results/
 
 .DS_Store
 Thumbs.db
