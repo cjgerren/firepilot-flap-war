@@ -1,9 +1,10 @@
 import React, { Suspense, lazy, useState, useCallback, useRef, useEffect } from 'react';
-import GameCanvas from '../components/game/GameCanvas';
 import MainMenu from '../components/game/MainMenu';
 import {
   getSelectedSkin,
   getEquippedUpgrades,
+  getCoins,
+  getDiamonds,
   calculateRunCoinReward,
   processGameOver,
 } from '../lib/gameStore';
@@ -12,13 +13,16 @@ import {
   pushLocalSaveToCloud,
   pullCloudSaveToLocal,
 } from '../lib/cloudSave';
-import { syncCheckoutSession, syncGooglePlayPurchases } from '../lib/payments';
+import { isGooglePlayBillingAvailable } from '../lib/storePlatform';
 import { areExternalPurchasesEnabled } from '../lib/releaseConfig';
 import { useAuth } from '../lib/AuthContext';
 import audioManager from '../lib/audioManager';
 import useAudioUnlock from '../lib/useAudioUnlock';
 import { isReviveAdsEnabled, primeReviveRewardedAd, showReviveRewardedAd } from '../lib/reviveAds';
 import { getRuntimeDefaultSettings } from '../config/gameConfig.js';
+
+const gameCanvasPromise = import('../components/game/GameCanvas');
+const GameCanvas = lazy(() => gameCanvasPromise);
 
 const MIC_DISCLOSURE_KEY = 'firepilot_mic_disclosure_acknowledged';
 const MobileTouchControls = lazy(() => import('../components/game/MobileTouchControls'));
@@ -102,6 +106,7 @@ export default function Game() {
   const [runHasRevived, setRunHasRevived] = useState(false);
   const [reviveBusy, setReviveBusy] = useState(false);
   const [reviveMessage, setReviveMessage] = useState('');
+  const [purchaseCredit, setPurchaseCredit] = useState(null);
   const [reviveRetryAt, setReviveRetryAt] = useState(0);
   const [, setReviveRetryTicker] = useState(0);
   const [milestoneBonusCoins, setMilestoneBonusCoins] = useState(0);
@@ -526,9 +531,12 @@ export default function Game() {
         if (!mounted) return;
 
         if (result?.ok) {
-          const playSyncResult = await syncGooglePlayPurchases(user.id);
-          if (playSyncResult?.ok && playSyncResult.processed > 0) {
-            await pullCloudSaveToLocal();
+          if (isGooglePlayBillingAvailable()) {
+            const { syncGooglePlayPurchases } = await import('../lib/payments');
+            const playSyncResult = await syncGooglePlayPurchases(user.id);
+            if (playSyncResult?.ok && playSyncResult.processed > 0) {
+              await pullCloudSaveToLocal();
+            }
           }
           setSkinId(getSelectedSkin());
         }
@@ -556,8 +564,13 @@ export default function Game() {
 
       if (checkout === 'success' && user) {
         try {
+          const coinsBefore = getCoins();
+          const diamondsBefore = getDiamonds();
+          let syncResult = { ok: true };
+
           if (sessionId) {
-            await syncCheckoutSession(sessionId);
+            const { syncCheckoutSession } = await import('../lib/payments');
+            syncResult = await syncCheckoutSession(sessionId);
           }
 
           const result = await pullCloudSaveToLocal();
@@ -565,6 +578,12 @@ export default function Game() {
 
           if (result?.ok) {
             setSkinId(getSelectedSkin());
+          }
+
+          const coinsAdded = Math.max(0, getCoins() - coinsBefore);
+          const diamondsAdded = Math.max(0, getDiamonds() - diamondsBefore);
+          if (syncResult?.ok !== false && (coinsAdded > 0 || diamondsAdded > 0)) {
+            setPurchaseCredit({ coinsAdded, diamondsAdded });
           }
 
           // Strip the return params only after a successful grant attempt.
@@ -697,6 +716,7 @@ export default function Game() {
 
   const handleStart = useCallback(async () => {
     await commitPendingRunIfNeeded();
+    await gameCanvasPromise;
     audioManager.unlock();
     audioManager.playSfx('click');
     const equipped = getEquippedUpgrades();
@@ -957,7 +977,18 @@ export default function Game() {
               margin: '0 auto',
             }}
           >
-            <GameCanvas
+<Suspense
+              fallback={
+                <div
+                  style={{
+                    width: '100%',
+                    aspectRatio: '800 / 500',
+                    background: '#05080c',
+                  }}
+                />
+              }
+            >
+                        <GameCanvas
               gameState={gameState}
               score={score}
               skinId={skinId}
@@ -976,6 +1007,7 @@ export default function Game() {
               shootStartRef={startFireRef}
               shootStopRef={stopFireRef}
             />
+            </Suspense>
           </div>
         </div>
 
@@ -1132,6 +1164,37 @@ export default function Game() {
         >
           FIREPILOT FLAP WAR // FUTURE STRIKE BUILD
         </p>
+      )}
+
+      {purchaseCredit && (purchaseCredit.coinsAdded > 0 || purchaseCredit.diamondsAdded > 0) && (
+        <div
+          className="fixed left-1/2 top-4 -translate-x-1/2 rounded-2xl px-4 py-3 font-mono text-xs tracking-wide"
+          style={{
+            zIndex: 1000002,
+            width: 'min(440px, calc(100vw - 24px))',
+            color: '#edf8ff',
+            background: 'rgba(8, 22, 16, 0.94)',
+            border: '1px solid rgba(120, 220, 150, 0.45)',
+            boxShadow: '0 18px 40px rgba(0,0,0,0.4)',
+          }}
+          role="status"
+        >
+          <p style={{ color: '#9dface' }}>PURCHASE ADDED</p>
+          <p className="mt-1" style={{ color: 'rgba(237,248,255,0.88)' }}>
+            {purchaseCredit.coinsAdded > 0 ? `${purchaseCredit.coinsAdded.toLocaleString()} coins` : ''}
+            {purchaseCredit.coinsAdded > 0 && purchaseCredit.diamondsAdded > 0 ? ' and ' : ''}
+            {purchaseCredit.diamondsAdded > 0 ? `${purchaseCredit.diamondsAdded.toLocaleString()} diamonds` : ''}
+            {' '}landed in your account.
+          </p>
+          <button
+            type="button"
+            className="mt-2 rounded-full px-3 py-1"
+            style={{ border: '1px solid rgba(157,250,206,0.35)', color: '#9dface' }}
+            onClick={() => setPurchaseCredit(null)}
+          >
+            DISMISS
+          </button>
+        </div>
       )}
     </div>
   );

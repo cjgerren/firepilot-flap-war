@@ -41,15 +41,28 @@ import {
 
 import { COMBO_PACKS, getCatalogAuditReport } from '../../lib/gameItems';
 import {
-  buyCoins,
-  buyDiamonds,
-  COIN_PACKS,
-  DIAMOND_PACKS,
   hasPaymentsApiBaseUrl,
   isGooglePlayBillingAvailable,
   isIosRevenueCatAvailable,
-  loadStoreCatalog,
-} from '../../lib/payments';
+} from '../../lib/storePlatform';
+
+let paymentsModulePromise = null;
+function loadPaymentsModule() {
+  if (!paymentsModulePromise) {
+    paymentsModulePromise = import('../../lib/payments.js');
+  }
+  return paymentsModulePromise;
+}
+
+async function purchaseCoins(pack, userId) {
+  const payments = await loadPaymentsModule();
+  return payments.buyCoins(pack, userId);
+}
+
+async function purchaseDiamonds(pack, userId) {
+  const payments = await loadPaymentsModule();
+  return payments.buyDiamonds(pack, userId);
+}
 import { pullCloudSaveToLocal, pushLocalSaveToCloud } from '../../lib/cloudSave';
 import { useAuth } from '../../lib/AuthContext';
 import {
@@ -305,6 +318,7 @@ export default function MainMenu({
   dailyMissionCompletions = 0,
 }) {
   const [showShop, setShowShop] = useState(false);
+  const [catalogPacks, setCatalogPacks] = useState(null);
   const [showCoinShop, setShowCoinShop] = useState(false);
   const [showDiamondShop, setShowDiamondShop] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -463,9 +477,9 @@ export default function MainMenu({
     try {
       let result = null;
       if (intent.currencyType === 'coins') {
-        result = await buyCoins(intent.pack, authenticatedUser.id);
+        result = await purchaseCoins(intent.pack, authenticatedUser.id);
       } else {
-        result = await buyDiamonds(intent.pack, authenticatedUser.id);
+        result = await purchaseDiamonds(intent.pack, authenticatedUser.id);
       }
 
       if (result?.ok && result.status === 'purchased') {
@@ -648,6 +662,34 @@ export default function MainMenu({
     }
   };
 
+
+  useEffect(() => {
+    let active = true;
+    const loadPacks = () => {
+      loadPaymentsModule()
+        .then((mod) => {
+          if (!active) return;
+          setCatalogPacks({ coins: mod.COIN_PACKS, diamonds: mod.DIAMOND_PACKS });
+        })
+        .catch((error) => {
+          console.error('Store catalog chunk failed to load:', error);
+        });
+    };
+
+    if (showCoinShop || showDiamondShop) {
+      loadPacks();
+      return () => {
+        active = false;
+      };
+    }
+
+    const id = window.setTimeout(loadPacks, 400);
+    return () => {
+      active = false;
+      window.clearTimeout(id);
+    };
+  }, [showCoinShop, showDiamondShop]);
+
   useEffect(() => {
     let active = true;
 
@@ -660,7 +702,8 @@ export default function MainMenu({
       }
 
       setStoreCatalogLoading(true);
-      const catalog = await loadStoreCatalog();
+      const payments = await loadPaymentsModule();
+      const catalog = await payments.loadStoreCatalog();
       if (!active) return;
 
       const byId = {};
@@ -788,7 +831,9 @@ export default function MainMenu({
     ];
 
     const sourcePacks =
-      Array.isArray(COIN_PACKS) && COIN_PACKS.length > 0 ? COIN_PACKS : fallbackPacks;
+      Array.isArray(catalogPacks?.coins) && catalogPacks.coins.length > 0
+        ? catalogPacks.coins
+        : fallbackPacks;
 
     return sourcePacks.map((pack) => ({
       ...pack,
@@ -807,7 +852,7 @@ export default function MainMenu({
         }[pack.coins] ??
         null,
     }));
-  }, []);
+  }, [catalogPacks]);
 
   const displayedCoinPacks = useMemo(
     () =>
@@ -828,8 +873,8 @@ export default function MainMenu({
     ];
 
     const sourcePacks =
-      Array.isArray(DIAMOND_PACKS) && DIAMOND_PACKS.length > 0
-        ? DIAMOND_PACKS
+      Array.isArray(catalogPacks?.diamonds) && catalogPacks.diamonds.length > 0
+        ? catalogPacks.diamonds
         : fallbackPacks;
 
     return sourcePacks.map((pack) => ({
@@ -848,7 +893,7 @@ export default function MainMenu({
         }[pack.diamonds] ??
         null,
     }));
-  }, []);
+  }, [catalogPacks]);
 
   const displayedDiamondPacks = useMemo(
     () =>
@@ -893,7 +938,7 @@ export default function MainMenu({
 
     try {
       setBuyingPackId(pack.id || String(pack.coins));
-      const result = await buyCoins(pack, user.id);
+      const result = await purchaseCoins(pack, user.id);
       if (result?.ok && result.status === 'purchased') {
         if (result?.creditedLocally) {
           refreshCurrencies();
@@ -937,7 +982,7 @@ export default function MainMenu({
 
     try {
       setBuyingPackId(pack.id || String(pack.diamonds));
-      const result = await buyDiamonds(pack, user.id);
+      const result = await purchaseDiamonds(pack, user.id);
       if (result?.ok && result.status === 'purchased') {
         if (result?.creditedLocally) {
           refreshCurrencies();

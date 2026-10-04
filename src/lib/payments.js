@@ -5,13 +5,25 @@ import {
   appStorePurchaseMessage,
   areExternalPurchasesEnabled,
 } from './releaseConfig';
-import { getApiBaseUrl, hasApiBaseUrl } from './apiBaseUrl';
+import { getApiBaseUrl } from './apiBaseUrl';
 import { addCoins, addDiamonds, addPurchaseRecord } from './gameStore';
 import {
-  buyRevenueCatPackage,
-  getRevenueCatOfferings,
-  initRevenueCat,
-} from '../services/revenueCat';
+  formatUsdFromCents,
+  isGooglePlayBillingAvailable,
+  isIosRevenueCatAvailable,
+} from './storePlatform';
+
+export {
+  formatUsdFromCents,
+  hasPaymentsApiBaseUrl,
+  isGooglePlayBillingAvailable,
+  isIosRevenueCatAvailable,
+  usesStripeCheckout,
+} from './storePlatform';
+
+function loadRevenueCat() {
+  return import('../services/revenueCat.js');
+}
 
 const PlayBilling = registerPlugin('PlayBilling');
 
@@ -112,43 +124,6 @@ export const DIAMOND_PACKS = [
   },
 ];
 
-function isNativePlatform() {
-  return typeof Capacitor?.isNativePlatform === 'function'
-    ? Capacitor.isNativePlatform()
-    : false;
-}
-
-export function isGooglePlayBillingAvailable() {
-  if (typeof window === 'undefined') return false;
-  return isNativePlatform() && Capacitor.getPlatform() === 'android';
-}
-
-export function isIosRevenueCatAvailable() {
-  if (typeof window === 'undefined') return false;
-  const apiKey = String(import.meta.env.VITE_REVENUECAT_IOS_API_KEY || '').trim();
-  return isNativePlatform() && Capacitor.getPlatform() === 'ios' && apiKey.length > 0;
-}
-
-export function usesStripeCheckout() {
-  return !isGooglePlayBillingAvailable() && !isIosRevenueCatAvailable();
-}
-
-export function formatUsdFromCents(amount) {
-  return `$${(amount / 100).toFixed(2)}`;
-}
-
-export function hasPaymentsApiBaseUrl() {
-  if (isGooglePlayBillingAvailable()) {
-    return Boolean(import.meta.env.VITE_API_BASE_URL?.trim());
-  }
-
-  if (isIosRevenueCatAvailable()) {
-    return true;
-  }
-
-  return hasSupabaseConfig || hasApiBaseUrl();
-}
-
 function buildCatalog(currencyType) {
   return currencyType === 'diamonds' ? DIAMOND_PACKS : COIN_PACKS;
 }
@@ -232,7 +207,7 @@ async function findRevenueCatPackageForPack(pack) {
     return pack.revenueCatPackage;
   }
 
-  const offerings = await getRevenueCatOfferings();
+  const offerings = await (await loadRevenueCat()).getRevenueCatOfferings();
   const packages = collectRevenueCatPackages(offerings);
   const productId = getPackProductId(pack);
 
@@ -276,8 +251,8 @@ export async function loadStoreCatalog() {
 
   if (isIosRevenueCatAvailable()) {
     try {
-      await initRevenueCat(null);
-      const offerings = await getRevenueCatOfferings();
+      await (await loadRevenueCat()).initRevenueCat(null);
+      const offerings = await (await loadRevenueCat()).getRevenueCatOfferings();
       const packages = collectRevenueCatPackages(offerings);
       const byProductId = new Map();
       for (let i = 0; i < packages.length; i++) {
@@ -473,7 +448,7 @@ async function createGooglePlayPurchase(pack, userId, currencyType) {
 }
 
 async function createRevenueCatPurchase(pack, userId, currencyType) {
-  await initRevenueCat(userId || null);
+  await (await loadRevenueCat()).initRevenueCat(userId || null);
   const rcPackage = await findRevenueCatPackageForPack(pack);
   if (!rcPackage) {
     throw new Error(
@@ -481,7 +456,7 @@ async function createRevenueCatPurchase(pack, userId, currencyType) {
     );
   }
 
-  const purchaseResult = await buyRevenueCatPackage(rcPackage);
+  const purchaseResult = await (await loadRevenueCat()).buyRevenueCatPackage(rcPackage);
   const quantity = currencyType === 'diamonds' ? Number(pack?.diamonds || 0) : Number(pack?.coins || 0);
   if (!Number.isFinite(quantity) || quantity <= 0) {
     throw new Error(`Invalid ${currencyType} quantity`);
