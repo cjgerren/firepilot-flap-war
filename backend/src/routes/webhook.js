@@ -11,6 +11,7 @@ import {
   applyCurrencyPurchase,
   isCurrencyPurchaseServiceConfigured,
 } from '../services/currencyPurchases.js';
+import { isPaidCheckoutSession } from '../checkoutSession.js';
 
 const router = express.Router();
 
@@ -67,9 +68,9 @@ router.post('/', express.raw({ type: 'application/json' }), async (req, res) => 
           break;
         }
 
-        if (session.payment_status !== 'paid' && session.status !== 'complete') {
+        if (!isPaidCheckoutSession(session)) {
           console.log(
-            `[WEBHOOK][${appName}] Session ${session.id} not fully paid/complete yet. payment_status=${session.payment_status}, status=${session.status}`
+            `[WEBHOOK][${appName}] Session ${session.id} not paid yet. payment_status=${session.payment_status}, status=${session.status}`
           );
           break;
         }

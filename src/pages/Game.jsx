@@ -1,9 +1,10 @@
 import React, { Suspense, lazy, useState, useCallback, useRef, useEffect } from 'react';
-import GameCanvas from '../components/game/GameCanvas';
 import MainMenu from '../components/game/MainMenu';
 import {
   getSelectedSkin,
   getEquippedUpgrades,
+  getCoins,
+  getDiamonds,
   calculateRunCoinReward,
   processGameOver,
 } from '../lib/gameStore';
@@ -12,7 +13,7 @@ import {
   pushLocalSaveToCloud,
   pullCloudSaveToLocal,
 } from '../lib/cloudSave';
-import { syncCheckoutSession, syncGooglePlayPurchases } from '../lib/payments';
+import { isGooglePlayBillingAvailable } from '../lib/storePlatform';
 import { areExternalPurchasesEnabled } from '../lib/releaseConfig';
 import { useAuth } from '../lib/AuthContext';
 import audioManager from '../lib/audioManager';
@@ -20,10 +21,31 @@ import useAudioUnlock from '../lib/useAudioUnlock';
 import { isReviveAdsEnabled, primeReviveRewardedAd, showReviveRewardedAd } from '../lib/reviveAds';
 import { getRuntimeDefaultSettings } from '../config/gameConfig.js';
 
+const gameCanvasPromise = import('../components/game/GameCanvas');
+const GameCanvas = lazy(() => gameCanvasPromise);
+
 const MIC_DISCLOSURE_KEY = 'firepilot_mic_disclosure_acknowledged';
+const FLIGHT_HINT_KEY = 'firepilot_flight_hint_seen';
 const MobileTouchControls = lazy(() => import('../components/game/MobileTouchControls'));
 
 const DEFAULT_SETTINGS = getRuntimeDefaultSettings();
+
+function readFlightHintSeen() {
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.localStorage.getItem(FLIGHT_HINT_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function markFlightHintSeen() {
+  try {
+    window.localStorage.setItem(FLIGHT_HINT_KEY, '1');
+  } catch {
+    // Ignore private-mode storage failures. The hint still hides for this run.
+  }
+}
 
 function hasAcceptedMicDisclosure() {
   if (typeof window === 'undefined') return false;
@@ -92,6 +114,9 @@ export default function Game() {
   const [lastMicSignalAt, setLastMicSignalAt] = useState(0);
   const [showRotateHint, setShowRotateHint] = useState(false);
   const [isMobileDevice, setIsMobileDevice] = useState(false);
+  const [narrowViewport, setNarrowViewport] = useState(false);
+  const [coarsePointer, setCoarsePointer] = useState(false);
+  const [showFlightHint, setShowFlightHint] = useState(false);
   const [mobileViewportHeight, setMobileViewportHeight] = useState(0);
   const [appIsForeground, setAppIsForeground] = useState(
     typeof document === 'undefined' ? true : document.visibilityState !== 'hidden'
@@ -102,6 +127,7 @@ export default function Game() {
   const [runHasRevived, setRunHasRevived] = useState(false);
   const [reviveBusy, setReviveBusy] = useState(false);
   const [reviveMessage, setReviveMessage] = useState('');
+  const [purchaseCredit, setPurchaseCredit] = useState(null);
   const [reviveRetryAt, setReviveRetryAt] = useState(0);
   const [, setReviveRetryTicker] = useState(0);
   const [milestoneBonusCoins, setMilestoneBonusCoins] = useState(0);
@@ -202,6 +228,11 @@ export default function Game() {
         (capacitorPlatform === 'android' || capacitorPlatform === 'ios');
 
       setIsMobileDevice(isNativeMobileApp);
+      setNarrowViewport(window.innerWidth <= 640);
+      setCoarsePointer(
+        Boolean(window.matchMedia?.('(pointer: coarse)')?.matches) ||
+          Number(navigator.maxTouchPoints || 0) > 0
+      );
       setShowRotateHint(isNativeMobileApp && window.innerHeight > window.innerWidth);
       setMobileViewportHeight(Math.round(window.visualViewport?.height || window.innerHeight || 0));
     };
@@ -526,9 +557,12 @@ export default function Game() {
         if (!mounted) return;
 
         if (result?.ok) {
-          const playSyncResult = await syncGooglePlayPurchases(user.id);
-          if (playSyncResult?.ok && playSyncResult.processed > 0) {
-            await pullCloudSaveToLocal();
+          if (isGooglePlayBillingAvailable()) {
+            const { syncGooglePlayPurchases } = await import('../lib/payments');
+            const playSyncResult = await syncGooglePlayPurchases(user.id);
+            if (playSyncResult?.ok && playSyncResult.processed > 0) {
+              await pullCloudSaveToLocal();
+            }
           }
           setSkinId(getSelectedSkin());
         }
@@ -556,8 +590,13 @@ export default function Game() {
 
       if (checkout === 'success' && user) {
         try {
+          const coinsBefore = getCoins();
+          const diamondsBefore = getDiamonds();
+          let syncResult = { ok: true };
+
           if (sessionId) {
-            await syncCheckoutSession(sessionId);
+            const { syncCheckoutSession } = await import('../lib/payments');
+            syncResult = await syncCheckoutSession(sessionId);
           }
 
           const result = await pullCloudSaveToLocal();
@@ -566,11 +605,19 @@ export default function Game() {
           if (result?.ok) {
             setSkinId(getSelectedSkin());
           }
-        } catch (error) {
-          console.error('Post-checkout cloud sync failed:', error);
-        } finally {
+
+          const coinsAdded = Math.max(0, getCoins() - coinsBefore);
+          const diamondsAdded = Math.max(0, getDiamonds() - diamondsBefore);
+          if (syncResult?.ok !== false && (coinsAdded > 0 || diamondsAdded > 0)) {
+            setPurchaseCredit({ coinsAdded, diamondsAdded });
+          }
+
+          // Strip the return params only after a successful grant attempt.
+          // A failed sync keeps session_id so a refresh can retry.
           const cleanUrl = `${window.location.origin}${window.location.pathname}`;
           window.history.replaceState({}, '', cleanUrl);
+        } catch (error) {
+          console.error('Post-checkout cloud sync failed:', error);
         }
       }
 
@@ -695,6 +742,7 @@ export default function Game() {
 
   const handleStart = useCallback(async () => {
     await commitPendingRunIfNeeded();
+    await gameCanvasPromise;
     audioManager.unlock();
     audioManager.playSfx('click');
     const equipped = getEquippedUpgrades();
@@ -860,14 +908,19 @@ export default function Game() {
   const handleSkinChange = useCallback((id) => setSkinId(id), []);
 
   const isPlaying = gameState === 'playing';
+  const inRun = gameState === 'ready' || gameState === 'playing';
   const mobileGameplayLayout = isPlaying && isMobileDevice;
   const showMobileTouchControls = isPlaying && isMobileDevice;
+  const showTouchShoot =
+    inRun && !showMobileTouchControls && (coarsePointer || narrowViewport);
   const showBlastTrigger = blastReady;
   const showSpecialTrigger = comboSpecialReady || tunnelBombReady;
   const showMicPrompt = settings.mobileSpecialControl === 'blow' && settings.mobileMicEnabled;
   const micActionReady = tunnelBombReady || comboSpecialReady;
   const micSignalVisible = Date.now() - lastMicSignalAt < 850;
   const mobileMenuLayout = gameState !== 'playing' && isMobileDevice;
+  const narrowMenuLayout = !isPlaying && narrowViewport && !isMobileDevice;
+  const fillMenuViewport = mobileMenuLayout || narrowMenuLayout;
   const reviveRetrySeconds = Math.max(0, Math.ceil((reviveRetryAt - Date.now()) / 1000));
   const canUseRevive = gameState === 'gameover' && Boolean(pendingRunResult) && !runHasRevived;
   const mobileFullLayout = mobileGameplayLayout || mobileMenuLayout;
@@ -887,39 +940,68 @@ export default function Game() {
   const shellBackground =
     'radial-gradient(circle at top, rgba(127,198,238,0.18), rgba(0,0,0,0) 30%), radial-gradient(circle at 80% 18%, rgba(255,174,128,0.12), rgba(0,0,0,0) 22%), linear-gradient(180deg, #09131b 0%, #081019 38%, #05080c 100%)';
 
+  useEffect(() => {
+    if (!inRun) return undefined;
+    if (readFlightHintSeen()) {
+      setShowFlightHint(false);
+      return undefined;
+    }
+
+    setShowFlightHint(true);
+    const hideHint = () => {
+      setShowFlightHint(false);
+      markFlightHintSeen();
+    };
+    const timerId = window.setTimeout(hideHint, 4500);
+    window.addEventListener('firepilot-shot', hideHint);
+    return () => {
+      window.clearTimeout(timerId);
+      window.removeEventListener('firepilot-shot', hideHint);
+    };
+  }, [inRun]);
+
+  const flightHintText = showTouchShoot
+    ? 'CLIMB WITH SPACE OR TAP. FIRE WITH F OR SHOOT.'
+    : 'CLIMB WITH SPACE OR TAP. FIRE WITH F.';
+
   return (
     <div
       className={`min-h-screen flex flex-col items-center select-none ${
-        mobileFullLayout ? 'justify-start p-0' : 'justify-center p-1 md:p-2'
+        mobileFullLayout || narrowMenuLayout ? 'justify-start p-0' : 'justify-center p-1 md:p-2'
       }`}
       style={{
         background: shellBackground,
-        overflowY: mobileGameplayLayout ? 'hidden' : mobileFullLayout ? 'auto' : 'hidden',
-        height: mobileFullLayout && mobileViewportHeight ? `${mobileViewportHeight}px` : undefined,
+        overflowY: mobileGameplayLayout ? 'hidden' : fillMenuViewport ? 'auto' : 'hidden',
+        height:
+          mobileFullLayout && mobileViewportHeight
+            ? `${mobileViewportHeight}px`
+            : narrowMenuLayout
+              ? '100dvh'
+              : undefined,
       }}
     >
       <div
-        className={`relative w-full ${mobileFullLayout ? 'rounded-none p-0' : 'rounded-[34px] p-2 md:p-3'}`}
+        className={`relative w-full ${mobileFullLayout || narrowMenuLayout ? 'rounded-none p-0' : 'rounded-[34px] p-2 md:p-3'}`}
         style={{
-          maxWidth: mobileFullLayout ? '100%' : 'min(1480px, calc(100vw - 12px))',
+          maxWidth: mobileFullLayout || narrowMenuLayout ? '100%' : 'min(1480px, calc(100vw - 12px))',
           height:
             mobileFullLayout && mobileViewportHeight
               ? `${mobileViewportHeight}px`
-              : mobileFullLayout
+              : mobileFullLayout || narrowMenuLayout
               ? '100dvh'
               : undefined,
           maxHeight:
             mobileFullLayout && mobileViewportHeight
               ? `${mobileViewportHeight}px`
-              : mobileFullLayout
+              : mobileFullLayout || narrowMenuLayout
               ? '100dvh'
               : undefined,
-          display: mobileFullLayout ? 'flex' : undefined,
-          flexDirection: mobileFullLayout ? 'column' : undefined,
+          display: mobileFullLayout || narrowMenuLayout ? 'flex' : undefined,
+          flexDirection: mobileFullLayout || narrowMenuLayout ? 'column' : undefined,
           background:
             'linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.01))',
-          border: mobileFullLayout ? 'none' : '1px solid rgba(175,225,255,0.12)',
-          boxShadow: mobileFullLayout ? 'none' : '0 32px 80px rgba(0,0,0,0.42)',
+          border: mobileFullLayout || narrowMenuLayout ? 'none' : '1px solid rgba(175,225,255,0.12)',
+          boxShadow: mobileFullLayout || narrowMenuLayout ? 'none' : '0 32px 80px rgba(0,0,0,0.42)',
         }}
       >
         {showRotateHint && (
@@ -953,9 +1035,21 @@ export default function Game() {
               width: mobileCanvasWidth,
               maxWidth: '100%',
               margin: '0 auto',
+              position: 'relative',
             }}
           >
-            <GameCanvas
+<Suspense
+              fallback={
+                <div
+                  style={{
+                    width: '100%',
+                    aspectRatio: '800 / 500',
+                    background: '#05080c',
+                  }}
+                />
+              }
+            >
+                        <GameCanvas
               gameState={gameState}
               score={score}
               skinId={skinId}
@@ -974,6 +1068,52 @@ export default function Game() {
               shootStartRef={startFireRef}
               shootStopRef={stopFireRef}
             />
+            </Suspense>
+            {showFlightHint && inRun && (
+              <div
+                className="absolute left-1/2 -translate-x-1/2 text-center font-mono text-[10px] tracking-[0.12em] px-3 py-1.5 rounded-full"
+                style={{
+                  top: 46,
+                  zIndex: 30,
+                  maxWidth: '92%',
+                  pointerEvents: 'none',
+                  color: '#edf8ff',
+                  background: 'rgba(6,12,18,0.78)',
+                  border: '1px solid rgba(157,220,255,0.28)',
+                }}
+              >
+                {flightHintText}
+              </div>
+            )}
+            {showTouchShoot && (
+              <button
+                type="button"
+                aria-label="SHOOT"
+                className="absolute font-display font-black tracking-[0.16em]"
+                style={{
+                  right: 10,
+                  bottom: 14,
+                  zIndex: 30,
+                  touchAction: 'none',
+                  minWidth: 84,
+                  minHeight: 64,
+                  padding: '0 14px',
+                  borderRadius: 16,
+                  color: '#ffd0c2',
+                  background: 'linear-gradient(180deg, rgba(255,90,40,0.34), rgba(20,8,6,0.78))',
+                  border: '1px solid rgba(255,150,110,0.9)',
+                  boxShadow: '0 8px 18px rgba(0,0,0,0.35)',
+                }}
+                onPointerDown={(event) => {
+                  event.currentTarget.setPointerCapture?.(event.pointerId);
+                  startFireRef.current?.();
+                }}
+                onPointerUp={() => stopFireRef.current?.()}
+                onPointerCancel={() => stopFireRef.current?.()}
+              >
+                SHOOT
+              </button>
+            )}
           </div>
         </div>
 
@@ -1130,6 +1270,37 @@ export default function Game() {
         >
           FIREPILOT FLAP WAR // FUTURE STRIKE BUILD
         </p>
+      )}
+
+      {purchaseCredit && (purchaseCredit.coinsAdded > 0 || purchaseCredit.diamondsAdded > 0) && (
+        <div
+          className="fixed left-1/2 top-4 -translate-x-1/2 rounded-2xl px-4 py-3 font-mono text-xs tracking-wide"
+          style={{
+            zIndex: 1000002,
+            width: 'min(440px, calc(100vw - 24px))',
+            color: '#edf8ff',
+            background: 'rgba(8, 22, 16, 0.94)',
+            border: '1px solid rgba(120, 220, 150, 0.45)',
+            boxShadow: '0 18px 40px rgba(0,0,0,0.4)',
+          }}
+          role="status"
+        >
+          <p style={{ color: '#9dface' }}>PURCHASE ADDED</p>
+          <p className="mt-1" style={{ color: 'rgba(237,248,255,0.88)' }}>
+            {purchaseCredit.coinsAdded > 0 ? `${purchaseCredit.coinsAdded.toLocaleString()} coins` : ''}
+            {purchaseCredit.coinsAdded > 0 && purchaseCredit.diamondsAdded > 0 ? ' and ' : ''}
+            {purchaseCredit.diamondsAdded > 0 ? `${purchaseCredit.diamondsAdded.toLocaleString()} diamonds` : ''}
+            {' '}landed in your account.
+          </p>
+          <button
+            type="button"
+            className="mt-2 rounded-full px-3 py-1"
+            style={{ border: '1px solid rgba(157,250,206,0.35)', color: '#9dface' }}
+            onClick={() => setPurchaseCredit(null)}
+          >
+            DISMISS
+          </button>
+        </div>
       )}
     </div>
   );
