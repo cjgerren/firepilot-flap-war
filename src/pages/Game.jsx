@@ -25,9 +25,27 @@ const gameCanvasPromise = import('../components/game/GameCanvas');
 const GameCanvas = lazy(() => gameCanvasPromise);
 
 const MIC_DISCLOSURE_KEY = 'firepilot_mic_disclosure_acknowledged';
+const FLIGHT_HINT_KEY = 'firepilot_flight_hint_seen';
 const MobileTouchControls = lazy(() => import('../components/game/MobileTouchControls'));
 
 const DEFAULT_SETTINGS = getRuntimeDefaultSettings();
+
+function readFlightHintSeen() {
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.localStorage.getItem(FLIGHT_HINT_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function markFlightHintSeen() {
+  try {
+    window.localStorage.setItem(FLIGHT_HINT_KEY, '1');
+  } catch {
+    // Ignore private-mode storage failures. The hint still hides for this run.
+  }
+}
 
 function hasAcceptedMicDisclosure() {
   if (typeof window === 'undefined') return false;
@@ -96,6 +114,9 @@ export default function Game() {
   const [lastMicSignalAt, setLastMicSignalAt] = useState(0);
   const [showRotateHint, setShowRotateHint] = useState(false);
   const [isMobileDevice, setIsMobileDevice] = useState(false);
+  const [narrowViewport, setNarrowViewport] = useState(false);
+  const [coarsePointer, setCoarsePointer] = useState(false);
+  const [showFlightHint, setShowFlightHint] = useState(false);
   const [mobileViewportHeight, setMobileViewportHeight] = useState(0);
   const [appIsForeground, setAppIsForeground] = useState(
     typeof document === 'undefined' ? true : document.visibilityState !== 'hidden'
@@ -207,6 +228,11 @@ export default function Game() {
         (capacitorPlatform === 'android' || capacitorPlatform === 'ios');
 
       setIsMobileDevice(isNativeMobileApp);
+      setNarrowViewport(window.innerWidth <= 640);
+      setCoarsePointer(
+        Boolean(window.matchMedia?.('(pointer: coarse)')?.matches) ||
+          Number(navigator.maxTouchPoints || 0) > 0
+      );
       setShowRotateHint(isNativeMobileApp && window.innerHeight > window.innerWidth);
       setMobileViewportHeight(Math.round(window.visualViewport?.height || window.innerHeight || 0));
     };
@@ -882,14 +908,19 @@ export default function Game() {
   const handleSkinChange = useCallback((id) => setSkinId(id), []);
 
   const isPlaying = gameState === 'playing';
+  const inRun = gameState === 'ready' || gameState === 'playing';
   const mobileGameplayLayout = isPlaying && isMobileDevice;
   const showMobileTouchControls = isPlaying && isMobileDevice;
+  const showTouchShoot =
+    inRun && !showMobileTouchControls && (coarsePointer || narrowViewport);
   const showBlastTrigger = blastReady;
   const showSpecialTrigger = comboSpecialReady || tunnelBombReady;
   const showMicPrompt = settings.mobileSpecialControl === 'blow' && settings.mobileMicEnabled;
   const micActionReady = tunnelBombReady || comboSpecialReady;
   const micSignalVisible = Date.now() - lastMicSignalAt < 850;
   const mobileMenuLayout = gameState !== 'playing' && isMobileDevice;
+  const narrowMenuLayout = !isPlaying && narrowViewport && !isMobileDevice;
+  const fillMenuViewport = mobileMenuLayout || narrowMenuLayout;
   const reviveRetrySeconds = Math.max(0, Math.ceil((reviveRetryAt - Date.now()) / 1000));
   const canUseRevive = gameState === 'gameover' && Boolean(pendingRunResult) && !runHasRevived;
   const mobileFullLayout = mobileGameplayLayout || mobileMenuLayout;
@@ -909,39 +940,68 @@ export default function Game() {
   const shellBackground =
     'radial-gradient(circle at top, rgba(127,198,238,0.18), rgba(0,0,0,0) 30%), radial-gradient(circle at 80% 18%, rgba(255,174,128,0.12), rgba(0,0,0,0) 22%), linear-gradient(180deg, #09131b 0%, #081019 38%, #05080c 100%)';
 
+  useEffect(() => {
+    if (!inRun) return undefined;
+    if (readFlightHintSeen()) {
+      setShowFlightHint(false);
+      return undefined;
+    }
+
+    setShowFlightHint(true);
+    const hideHint = () => {
+      setShowFlightHint(false);
+      markFlightHintSeen();
+    };
+    const timerId = window.setTimeout(hideHint, 4500);
+    window.addEventListener('firepilot-shot', hideHint);
+    return () => {
+      window.clearTimeout(timerId);
+      window.removeEventListener('firepilot-shot', hideHint);
+    };
+  }, [inRun]);
+
+  const flightHintText = showTouchShoot
+    ? 'CLIMB WITH SPACE OR TAP. FIRE WITH F OR SHOOT.'
+    : 'CLIMB WITH SPACE OR TAP. FIRE WITH F.';
+
   return (
     <div
       className={`min-h-screen flex flex-col items-center select-none ${
-        mobileFullLayout ? 'justify-start p-0' : 'justify-center p-1 md:p-2'
+        mobileFullLayout || narrowMenuLayout ? 'justify-start p-0' : 'justify-center p-1 md:p-2'
       }`}
       style={{
         background: shellBackground,
-        overflowY: mobileGameplayLayout ? 'hidden' : mobileFullLayout ? 'auto' : 'hidden',
-        height: mobileFullLayout && mobileViewportHeight ? `${mobileViewportHeight}px` : undefined,
+        overflowY: mobileGameplayLayout ? 'hidden' : fillMenuViewport ? 'auto' : 'hidden',
+        height:
+          mobileFullLayout && mobileViewportHeight
+            ? `${mobileViewportHeight}px`
+            : narrowMenuLayout
+              ? '100dvh'
+              : undefined,
       }}
     >
       <div
-        className={`relative w-full ${mobileFullLayout ? 'rounded-none p-0' : 'rounded-[34px] p-2 md:p-3'}`}
+        className={`relative w-full ${mobileFullLayout || narrowMenuLayout ? 'rounded-none p-0' : 'rounded-[34px] p-2 md:p-3'}`}
         style={{
-          maxWidth: mobileFullLayout ? '100%' : 'min(1480px, calc(100vw - 12px))',
+          maxWidth: mobileFullLayout || narrowMenuLayout ? '100%' : 'min(1480px, calc(100vw - 12px))',
           height:
             mobileFullLayout && mobileViewportHeight
               ? `${mobileViewportHeight}px`
-              : mobileFullLayout
+              : mobileFullLayout || narrowMenuLayout
               ? '100dvh'
               : undefined,
           maxHeight:
             mobileFullLayout && mobileViewportHeight
               ? `${mobileViewportHeight}px`
-              : mobileFullLayout
+              : mobileFullLayout || narrowMenuLayout
               ? '100dvh'
               : undefined,
-          display: mobileFullLayout ? 'flex' : undefined,
-          flexDirection: mobileFullLayout ? 'column' : undefined,
+          display: mobileFullLayout || narrowMenuLayout ? 'flex' : undefined,
+          flexDirection: mobileFullLayout || narrowMenuLayout ? 'column' : undefined,
           background:
             'linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.01))',
-          border: mobileFullLayout ? 'none' : '1px solid rgba(175,225,255,0.12)',
-          boxShadow: mobileFullLayout ? 'none' : '0 32px 80px rgba(0,0,0,0.42)',
+          border: mobileFullLayout || narrowMenuLayout ? 'none' : '1px solid rgba(175,225,255,0.12)',
+          boxShadow: mobileFullLayout || narrowMenuLayout ? 'none' : '0 32px 80px rgba(0,0,0,0.42)',
         }}
       >
         {showRotateHint && (
@@ -975,6 +1035,7 @@ export default function Game() {
               width: mobileCanvasWidth,
               maxWidth: '100%',
               margin: '0 auto',
+              position: 'relative',
             }}
           >
 <Suspense
@@ -1008,6 +1069,51 @@ export default function Game() {
               shootStopRef={stopFireRef}
             />
             </Suspense>
+            {showFlightHint && inRun && (
+              <div
+                className="absolute left-1/2 -translate-x-1/2 text-center font-mono text-[10px] tracking-[0.12em] px-3 py-1.5 rounded-full"
+                style={{
+                  top: 46,
+                  zIndex: 30,
+                  maxWidth: '92%',
+                  pointerEvents: 'none',
+                  color: '#edf8ff',
+                  background: 'rgba(6,12,18,0.78)',
+                  border: '1px solid rgba(157,220,255,0.28)',
+                }}
+              >
+                {flightHintText}
+              </div>
+            )}
+            {showTouchShoot && (
+              <button
+                type="button"
+                aria-label="SHOOT"
+                className="absolute font-display font-black tracking-[0.16em]"
+                style={{
+                  right: 10,
+                  bottom: 14,
+                  zIndex: 30,
+                  touchAction: 'none',
+                  minWidth: 84,
+                  minHeight: 64,
+                  padding: '0 14px',
+                  borderRadius: 16,
+                  color: '#ffd0c2',
+                  background: 'linear-gradient(180deg, rgba(255,90,40,0.34), rgba(20,8,6,0.78))',
+                  border: '1px solid rgba(255,150,110,0.9)',
+                  boxShadow: '0 8px 18px rgba(0,0,0,0.35)',
+                }}
+                onPointerDown={(event) => {
+                  event.currentTarget.setPointerCapture?.(event.pointerId);
+                  startFireRef.current?.();
+                }}
+                onPointerUp={() => stopFireRef.current?.()}
+                onPointerCancel={() => stopFireRef.current?.()}
+              >
+                SHOOT
+              </button>
+            )}
           </div>
         </div>
 

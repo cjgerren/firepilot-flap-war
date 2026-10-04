@@ -223,6 +223,7 @@ export default function MainMenu({
   const [settingsDraft, setSettingsDraft] = useState(loadSettings());
   const [listeningFor, setListeningFor] = useState(null);
   const [isMobileDevice, setIsMobileDevice] = useState(false);
+  const [compactViewport, setCompactViewport] = useState(false);
   const {
     user,
     isLoadingAuth,
@@ -670,6 +671,18 @@ export default function MainMenu({
     return () => {
       window.removeEventListener('resize', updateMobileDevice);
       window.removeEventListener('orientationchange', updateMobileDevice);
+    };
+  }, []);
+
+  useEffect(() => {
+    const query = window.matchMedia('(max-width: 640px)');
+    const updateCompact = () => setCompactViewport(query.matches);
+    updateCompact();
+    query.addEventListener?.('change', updateCompact);
+    window.addEventListener('resize', updateCompact);
+    return () => {
+      query.removeEventListener?.('change', updateCompact);
+      window.removeEventListener('resize', updateCompact);
     };
   }, []);
 
@@ -1533,7 +1546,9 @@ export default function MainMenu({
       className={
         isMobileDevice
           ? 'w-full min-h-full h-full flex items-stretch justify-center px-0 py-0'
-          : 'w-full h-full flex items-center justify-center px-3 md:px-4 py-3'
+          : compactViewport
+            ? 'w-full h-full flex items-start justify-center px-2 py-2 overflow-y-auto'
+            : 'w-full h-full flex items-center justify-center px-3 md:px-4 py-3'
       }
     >
       <motion.div
@@ -1543,7 +1558,9 @@ export default function MainMenu({
         className={
           isMobileDevice
             ? 'w-full h-full max-w-none max-h-none rounded-none p-3 relative overflow-y-auto overflow-x-hidden'
-            : 'w-full max-w-[1320px] h-full rounded-[32px] p-4 md:p-6 relative overflow-hidden'
+            : compactViewport
+              ? 'w-full max-w-none rounded-2xl p-3 relative overflow-y-auto overflow-x-hidden'
+              : 'w-full max-w-[1320px] h-full rounded-[32px] p-4 md:p-6 relative overflow-hidden'
         }
         style={
           isMobileDevice
@@ -1563,7 +1580,7 @@ export default function MainMenu({
               'radial-gradient(circle at 18% 20%, rgba(135,210,255,0.16), rgba(0,0,0,0) 26%), radial-gradient(circle at 82% 12%, rgba(255,171,122,0.16), rgba(0,0,0,0) 24%), linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0))',
           }}
         />
-        <div className="relative text-center mb-5 md:mb-6">
+        <div className={compactViewport ? "relative text-center mb-2" : "relative text-center mb-5 md:mb-6"}>
           <div className="flex flex-col md:flex-row items-center justify-between gap-3 mb-4">
             <div
               className="inline-flex items-center gap-2 rounded-full px-3 py-1"
@@ -1677,7 +1694,11 @@ export default function MainMenu({
             </span>
           </div>
           <h1
-            className="font-display text-[2.4rem] md:text-[4.35rem] leading-none font-black tracking-[0.16em]"
+            className={
+              compactViewport
+                ? 'font-display text-[1.65rem] leading-none font-black tracking-[0.12em]'
+                : 'font-display text-[2.4rem] md:text-[4.35rem] leading-none font-black tracking-[0.16em]'
+            }
             style={{
               color: '#edf8ff',
               textShadow: '0 10px 30px rgba(0,0,0,0.35), 0 0 26px rgba(145,220,255,0.2)',
@@ -1686,18 +1707,26 @@ export default function MainMenu({
             FIREPILOT
           </h1>
           <p
-            className="font-display text-[1.05rem] md:text-[1.35rem] font-bold tracking-[0.55em] mt-3 pl-3"
+            className={
+              compactViewport
+                ? 'font-display text-[0.85rem] font-bold tracking-[0.42em] mt-1 pl-1'
+                : 'font-display text-[1.05rem] md:text-[1.35rem] font-bold tracking-[0.55em] mt-3 pl-3'
+            }
             style={{ color: '#7de3ff' }}
           >
             FLAP WAR
           </p>
           <p
-            className="font-mono text-[10px] md:text-xs tracking-[0.22em] mt-4"
+            className={
+              compactViewport
+                ? 'font-mono text-[10px] tracking-[0.14em] mt-2'
+                : 'font-mono text-[10px] md:text-xs tracking-[0.22em] mt-4'
+            }
             style={{ color: 'rgba(230,240,246,0.62)' }}
           >
             Low-altitude strike route through a fortified future tunnel.
           </p>
-          <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
+          <div className={compactViewport ? "mt-2 flex flex-wrap items-center justify-center gap-3" : "mt-4 flex flex-wrap items-center justify-center gap-3"}>
             <button
               type="button"
               onClick={openPrivacyPolicy}
@@ -1719,7 +1748,7 @@ export default function MainMenu({
           </div>
         </div>
 
-        <div className="relative grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+        <div className={compactViewport ? "relative grid grid-cols-2 gap-2 mb-2" : "relative grid grid-cols-2 md:grid-cols-4 gap-3 mb-4"}>
           <StatChip
             icon={<Trophy className="w-4 h-4" />}
             label="BEST"
@@ -1760,13 +1789,15 @@ export default function MainMenu({
           />
         </div>
 
-        <div className="relative grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-          <MenuActionButton
-            onClick={onStart}
-            icon={<Play className="w-5 h-5" />}
-            label="LAUNCH"
-            primary
-          />
+        <div className={compactViewport ? "relative grid grid-cols-2 gap-2 mb-2" : "relative grid grid-cols-2 md:grid-cols-4 gap-3 mb-4"}>
+          <div className="col-span-2">
+            <MenuActionButton
+              onClick={onStart}
+              icon={<Play className="w-5 h-5" />}
+              label="PLAY NOW"
+              primary
+            />
+          </div>
           <MenuActionButton
             onClick={() => setShowShop(true)}
             icon={<ShoppingBag className="w-4 h-4" />}
@@ -1826,7 +1857,7 @@ export default function MainMenu({
           )}
         </div>
 
-        <div className="relative grid grid-cols-1 md:grid-cols-3 gap-3">
+        {!compactViewport && <div className="relative grid grid-cols-1 md:grid-cols-3 gap-3">
           <div
             className="rounded-2xl p-4 min-w-0"
             style={{
@@ -1844,7 +1875,7 @@ export default function MainMenu({
               className="font-mono text-[11px] leading-5"
               style={{ color: 'rgba(225,235,242,0.66)' }}
             >
-              Launch arms the run. Tap, click, or press Fly to keep the aircraft inside the tunnel route.
+              Play Now arms the run. Tap, click, or press Fly to keep the aircraft inside the tunnel route.
             </p>
           </div>
 
@@ -1895,9 +1926,9 @@ export default function MainMenu({
               Equip skins, weapons, and upgrades from the Armory before the run.
             </p>
           </div>
-        </div>
+        </div>}
 
-        <div className="relative grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
+        {!compactViewport && <div className="relative grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
           <div
             className="rounded-2xl p-4 min-w-0"
             style={{
@@ -2028,7 +2059,7 @@ export default function MainMenu({
               </div>
             )}
           </div>
-        </div>
+        </div>}
       </motion.div>
     </div>
   );
@@ -2133,7 +2164,9 @@ export default function MainMenu({
             className={
               isMobileDevice
                 ? 'w-full min-h-full h-full flex flex-col items-stretch justify-start px-0 py-0 overflow-y-auto'
-                : 'w-full h-full flex flex-col items-center justify-center px-3 md:px-6 py-4 overflow-y-auto'
+                : compactViewport
+                  ? 'w-full h-full flex flex-col items-stretch justify-start px-3 py-3 overflow-y-auto'
+                  : 'w-full h-full flex flex-col items-center justify-center px-3 md:px-6 py-4 overflow-y-auto'
             }
           >
             <motion.div
@@ -2156,7 +2189,11 @@ export default function MainMenu({
               }
             >
               <h2
-                className="font-display text-[2.25rem] md:text-[3.4rem] leading-none font-black tracking-[0.14em]"
+                className={
+                  compactViewport
+                    ? 'font-display text-[1.7rem] leading-none font-black tracking-[0.12em]'
+                    : 'font-display text-[2.25rem] md:text-[3.4rem] leading-none font-black tracking-[0.14em]'
+                }
                 style={{ color: '#edf8ff', textShadow: '0 10px 30px rgba(0,0,0,0.35)' }}
               >
                 MISSION LOST

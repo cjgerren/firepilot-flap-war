@@ -3003,6 +3003,9 @@ export default function GameCanvas({
     const game = gameRef.current;
     if (!game || game.ended) return;
     game.autoHeld = true;
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('firepilot-shot'));
+    }
     shoot();
   }, [shoot]);
 
