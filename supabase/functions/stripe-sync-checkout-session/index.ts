@@ -1,6 +1,7 @@
 import Stripe from 'npm:stripe@18.5.0';
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { applyCurrencyPurchase } from '../_shared/currencyPurchases.ts';
+import { isPaidCheckoutSession } from '../_shared/checkoutSession.ts';
 import { jsonResponse, optionsResponse } from '../_shared/http.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || '';
@@ -53,10 +54,10 @@ Deno.serve(async (req: Request) => {
   try {
     const session = await stripe.checkout.sessions.retrieve(sessionId);
 
-    if (session.payment_status !== 'paid' && session.status !== 'complete') {
+    if (!isPaidCheckoutSession(session)) {
       return jsonResponse(
         {
-          error: 'Checkout session is not complete.',
+          error: 'Checkout session is not paid.',
           paymentStatus: session.payment_status,
           status: session.status,
         },

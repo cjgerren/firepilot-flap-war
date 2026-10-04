@@ -566,11 +566,13 @@ export default function Game() {
           if (result?.ok) {
             setSkinId(getSelectedSkin());
           }
-        } catch (error) {
-          console.error('Post-checkout cloud sync failed:', error);
-        } finally {
+
+          // Strip the return params only after a successful grant attempt.
+          // A failed sync keeps session_id so a refresh can retry.
           const cleanUrl = `${window.location.origin}${window.location.pathname}`;
           window.history.replaceState({}, '', cleanUrl);
+        } catch (error) {
+          console.error('Post-checkout cloud sync failed:', error);
         }
       }
 

@@ -270,12 +270,14 @@ export const AuthProvider = ({ children }) => {
       throw error;
     }
 
-    const currentUser = data?.user ?? null;
-    if (currentUser) {
+    // Email confirmation leaves a user row but no session. Do not treat that as signed in,
+    // or checkout and cloud save run against an account that cannot authorize requests.
+    const sessionUser = data?.session?.user ?? null;
+    if (sessionUser) {
       clearDeveloperSession();
     }
-    setUser(currentUser);
-    setIsAuthenticated(!!currentUser);
+    setUser(sessionUser);
+    setIsAuthenticated(!!sessionUser);
     return data;
   };
 

@@ -9,6 +9,7 @@ import {
   hasStripeConfig,
 } from '../config.js';
 import { findCurrencyPack } from '../catalog.js';
+import { isPaidCheckoutSession } from '../checkoutSession.js';
 import {
   applyCurrencyPurchase,
   isCurrencyPurchaseServiceConfigured,
@@ -116,9 +117,9 @@ router.post('/sync-checkout-session', async (req, res) => {
   try {
     const session = await stripe.checkout.sessions.retrieve(sessionId);
 
-    if (session.payment_status !== 'paid' && session.status !== 'complete') {
+    if (!isPaidCheckoutSession(session)) {
       return res.status(409).json({
-        error: 'Checkout session is not complete.',
+        error: 'Checkout session is not paid.',
         paymentStatus: session.payment_status,
         status: session.status,
       });
