@@ -6,6 +6,7 @@ import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import Game from './pages/Game';
+import { Analytics } from '@vercel/analytics/react';
 
 const Login = lazy(() => import('./pages/Login'));
 const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'));
@@ -55,6 +56,7 @@ function App() {
           <AuthenticatedApp />
         </Router>
         <Toaster />
+        <Analytics />
       </QueryClientProvider>
     </AuthProvider>
   );
